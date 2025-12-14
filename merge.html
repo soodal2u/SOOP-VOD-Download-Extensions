@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>파일 병합 및 편집</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="container">
+    <h1>M3U8 플레이리스트 편집</h1>
+
+    <!-- 서버 상태 표시 영역 추가 -->
+    <div class="server-status">
+      <div id="current-server-display">현재 서버: 확인 중...</div>
+      <div class="server-controls">
+        <button id="change-server-btn" class="server-button">다음 서버로 변경</button>
+        <button id="refresh-server-btn" class="server-button">서버 새로고침</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <p>팝업에서 다운로드한 playlist.m3u8 파일을 "soop video download" 폴더에서 선택하세요</p>
+
+      <input type="file" id="playlist-file" accept=".m3u8">
+
+      <div class="checkbox-container">
+        <input type="checkbox" id="include-title-playlist" checked>
+        <label for="include-title-playlist">파일명에 제목 포함</label>
+      </div>
+
+      <div class="time-inputs">
+        <label for="start-time">시작 시간 (시:분:초):</label>
+        <input type="text" id="start-time" placeholder="00:00:00">
+
+        <label for="end-time">종료 시간 (시:분:초):</label>
+        <input type="text" id="end-time" placeholder="01:00:00">
+      </div>
+
+      <button id="process-playlist" class="download-button">구간 영상 다운로드</button>
+      <button id="download-full-video" class="full-download-button">전체 영상 다운로드</button>
+    </div>
+
+    <div class="section">
+      <h2>구독 플러스 VOD 다운로더</h2>
+      <p>구독플러스 영상을 다운로드 할수 있는 프로그램을 다운받습니다.</p>
+      <button id="download-zip" class="playlist-button">ZIP 파일 다운로드</button>
+    </div>
+
+    <div class="section">
+      <h2>서버 관리</h2>
+      <button id="restart-server" class="restart-button">서버 재시작</button>
+      <div id="countdown" class="countdown" style="display: none;"></div>
+    </div>
+  </div>
+
+  <script src="merge.js"></script>
+</body>
+
+</html>
