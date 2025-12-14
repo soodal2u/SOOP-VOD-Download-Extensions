@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Soop VOD Downloader</title>
+  <style>
+    body {
+      background-color: #4d4d4d;
+      font-family: Arial, sans-serif;
+      padding: 10px;
+      width: 300px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: white;
+    }
+
+    button {
+      display: block;
+      margin: 15px auto;
+      padding: 15px;
+      width: calc(100% - 20px);
+      box-sizing: border-box;
+      border-radius: 8px;
+      border: none;
+      background-color: #5c5c5c;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.1s;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: #6f6f6f;
+    }
+
+    button:active {
+      transform: scale(0.95);
+      background-color: #4a4a4a;
+    }
+
+    button:disabled {
+      background-color: #3a3a3a;
+      cursor: not-allowed;
+    }
+
+    /* 특별한 버튼 색상 */
+    .playlist-button {
+      background-color: #2196F3;
+    }
+
+    .playlist-button:hover {
+      background-color: #1976D2;
+    }
+
+    .playlist-button:active {
+      background-color: #1565C0;
+    }
+
+    .support-button {
+      background-color: #FFAB00;
+      color: #000000;
+      font-weight: bold;
+    }
+
+    .support-button:hover {
+      background-color: #FF8F00;
+    }
+
+    .support-button:active {
+      background-color: #FF6F00;
+    }
+
+    img {
+      width: 100%;
+      height: auto;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <img src="soop_logo.svg" alt="Soop VOD Logo">
+  <h1>숲 영상 다운로드</h1>
+  <button id="download-playlist" class="playlist-button" style="display: none;">playlist.m3u8 다운로드</button>
+  <div id="chapter-list"></div>
+  <button id="auto-scan">🤖 챕터 자동 스캔</button>
+  <button id="refresh-list">🔄 목록 새로고침</button>
+  <button id="copy-ffmpeg">로컬에서 다운로드 하기</button>
+  <button id="install-ffmpeg">FFMPEG 다운로드 하기</button>
+  <button id="merge-move">파일 병합 페이지</button>
+  <button id="support-button" class="support-button">☕ 서버비 후원 감사합니다</button>
+  <script src="popup.js"></script>
+</body>
+
+</html>
