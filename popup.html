@@ -80,20 +80,72 @@
       height: auto;
       margin-bottom: 10px;
     }
+
+    /* 아이콘 스타일 */
+    .icon {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      vertical-align: middle;
+      margin-right: 8px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   </style>
 </head>
 
 <body>
   <img src="soop_logo.svg" alt="Soop VOD Logo">
   <h1>숲 영상 다운로드</h1>
-  <button id="download-playlist" class="playlist-button" style="display: none;">playlist.m3u8 다운로드</button>
+  <button id="download-playlist" class="playlist-button" style="display: none;">
+    <svg class="icon" viewBox="0 0 24 24">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+    playlist.m3u8 다운로드
+  </button>
   <div id="chapter-list"></div>
-  <button id="auto-scan">🤖 챕터 자동 스캔</button>
-  <button id="refresh-list">🔄 목록 새로고침</button>
+  <button id="auto-scan">
+    <svg class="icon" viewBox="0 0 24 24">
+      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.71-2.13.09-2.91a2.18 2.18 0 0 0-3.09-.09z" />
+      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+      <path d="M9 12H4s.55-3.03 2-5c1.62-2.2 5-3 5-3" />
+      <path d="M12 15v5s3.03-.55 5-2c2.2-1.62 3-5 3-5" />
+    </svg>
+    정밀 자동 스캔 (모든 파트 찾기)
+  </button>
+  <button id="refresh-list">
+    <svg class="icon" viewBox="0 0 24 24">
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+    목록 새로고침
+  </button>
   <button id="copy-ffmpeg">로컬에서 다운로드 하기</button>
   <button id="install-ffmpeg">FFMPEG 다운로드 하기</button>
   <button id="merge-move">파일 병합 페이지</button>
-  <button id="support-button" class="support-button">☕ 서버비 후원 감사합니다</button>
+  <button id="support-button" class="support-button">
+    <svg class="icon" viewBox="0 0 24 24">
+      <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
+      <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
+      <line x1="6" y1="2" x2="6" y2="4" />
+      <line x1="10" y1="2" x2="10" y2="4" />
+      <line x1="14" y1="2" x2="14" y2="4" />
+    </svg>
+    서버비 후원 감사합니다
+  </button>
   <script src="popup.js"></script>
 </body>
 

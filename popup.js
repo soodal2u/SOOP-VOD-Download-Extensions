@@ -2,9 +2,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // 초기 로드 시 비디오 정보 추출 및 목록 표시
   refreshVideoList();
 
-  // 자동 스캔 버튼 이벤트
+  // 고급 자동 스캔 버튼 이벤트
   document.getElementById('auto-scan').addEventListener('click', () => {
-    handleAutoScan();
+    handleAdvancedScan();
   });
 
   // 새로고침 버튼 이벤트
@@ -33,9 +33,193 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+function handleAdvancedScan() {
+  const chapterListDiv = document.getElementById('chapter-list');
+  chapterListDiv.innerHTML = '<p style="color: #4CAF50;">고급 자동 스캔 중입니다...<br>플레이어의 재생 위치가 이동될 수 있습니다.</p>';
+
+  const btn = document.getElementById('auto-scan');
+  btn.disabled = true;
+
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tabs[0].id },
+        function: advancedScanSegments
+      },
+      (results) => {
+        btn.disabled = false;
+        if (results && results[0] && results[0].result) {
+          const { success, message, foundCount } = results[0].result;
+          if (success) {
+            refreshVideoList();
+            alert(`스캔 완료! 총 ${foundCount}개의 구성을 찾았습니다.`);
+          } else {
+            chapterListDiv.innerHTML = `<p style="color: #ff6b6b;">스캔 실패: ${message}</p>`;
+            alert(`스캔 실패: ${message}`);
+          }
+        } else {
+          chapterListDiv.innerHTML = '<p style="color: #ff6b6b;">스크립트 실행 실패</p>';
+        }
+      }
+    );
+  });
+}
+
+// 이 함수는 페이지 내에서 실행됩니다 (Content Script Context)
+async function advancedScanSegments() {
+  try {
+    const timeDisplay = document.querySelector('.time_display');
+    if (!timeDisplay) return { success: false, message: '시간 표시 엘리먼트를 찾을 수 없습니다.' };
+
+    const durationText = timeDisplay.querySelector('.time-duration')?.textContent || "";
+    const totalSeconds = parseTimeToSeconds(durationText);
+    if (!totalSeconds) return { success: false, message: '전체 재생 시간을 파악할 수 없습니다.' };
+
+    console.log(`Total Duration: ${totalSeconds}s (${durationText})`);
+
+    let foundM3u8s = [];
+    const video = document.querySelector('video');
+
+    const getUniqueM3u8s = () => {
+      const resources = performance.getEntriesByType('resource');
+      const urls = resources
+        .filter(r => r.name.includes('.m3u8') && !r.name.includes('.smil'))
+        .map(r => r.name);
+
+      const videoEl = document.querySelector('video');
+      if (videoEl && videoEl.src && videoEl.src.includes('.m3u8') && !videoEl.src.includes('.smil')) {
+        urls.push(videoEl.src);
+      }
+      return [...new Set(urls)];
+    };
+
+    const getM3u8Duration = async (url) => {
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) return 0;
+        const manifestText = await resp.text();
+
+        // 1. EXT-X-TOTAL_DURATION 또는 TOTAL-DURATION 확인 (대시/언더스코어 대응)
+        const totalDurationRegex = /#EXT-X-TOTAL[-_]DURATION:([\d.]+)/i;
+        const totalMatch = totalDurationRegex.exec(manifestText);
+        if (totalMatch) {
+          const dur = parseFloat(totalMatch[1]);
+          console.log(`[Parsed] m3u8 TOTAL_DURATION: ${dur}s from ${url}`);
+          return dur;
+        }
+
+        // 2. 변체 플레이리스트(Variant Playlist) 확인
+        const variantPlaylistRegex = /#EXT-X-STREAM-INF:.*RESOLUTION=(\d+x\d+).*\n(.*?\.m3u8)/g;
+        let variantMatch = variantPlaylistRegex.exec(manifestText);
+        if (variantMatch) {
+          const variantUrl = new URL(variantMatch[2], url).href;
+          return await getM3u8Duration(variantUrl);
+        }
+
+        // 3. 총 비디오 길이 계산 (Regex 사용)
+        let duration = 0;
+        const extinfRegex = /#EXTINF:([\d.]+),/g;
+        let match;
+        while ((match = extinfRegex.exec(manifestText)) !== null) {
+          duration += parseFloat(match[1]);
+        }
+        console.log(`[Parsed] m3u8 EXTINF Sum: ${duration}s from ${url}`);
+        return duration;
+      } catch (e) {
+        return 0;
+      }
+    };
+
+    function parseTimeToSeconds(timeStr) {
+      const parts = timeStr.split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return 0;
+    }
+
+    let currentTotalDetected = 0;
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    // 초기 상태에서 이미 로드된 m3u8들을 먼저 수집
+    const initialUrls = getUniqueM3u8s();
+    for (const url of initialUrls) {
+      if (!foundM3u8s.includes(url)) {
+        const dur = await getM3u8Duration(url);
+        if (dur > 0) {
+          foundM3u8s.push(url);
+          currentTotalDetected += dur;
+          console.log(`Initial m3u8 found: ${url}, Duration: ${dur}s, Total Detected: ${currentTotalDetected}s`);
+        }
+      }
+    }
+
+    while (currentTotalDetected < totalSeconds - 5 && attempts < maxAttempts) {
+      // 사용자 요청: 감지된 총 시간이 전체와 같거나 크면 종료
+      if (currentTotalDetected >= totalSeconds - 1) {
+        console.log("[Scan] All durations accounted for. Stopping.");
+        break;
+      }
+
+      // 다음 구간 탐색 지점: 현재 감지된 끝부분 + 5초
+      const jumpTo = Math.min(currentTotalDetected + 5, totalSeconds - 1);
+
+      console.log(`[Scan] Detected: ${currentTotalDetected.toFixed(1)}s / Total: ${totalSeconds}s`);
+      console.log(`[Scan] Jumping to ${jumpTo.toFixed(1)}s to trigger next m3u8 load...`);
+
+      const videoEl = document.querySelector('video');
+      if (videoEl) {
+        videoEl.currentTime = jumpTo;
+        // 네트워크 요청 및 플레이어 동기화를 위해 대기
+        await new Promise(r => setTimeout(r, 4500));
+
+        const currentUrls = getUniqueM3u8s();
+        const newUrls = currentUrls.filter(url => !foundM3u8s.includes(url));
+
+        let foundNewInLoop = false;
+        for (const url of newUrls) {
+          const dur = await getM3u8Duration(url);
+          if (dur > 0) {
+            foundM3u8s.push(url);
+            currentTotalDetected += dur;
+            foundNewInLoop = true;
+            console.log(`[Success] New segment found! Duration: ${dur}s. Total now: ${currentTotalDetected.toFixed(1)}s`);
+          }
+        }
+
+        if (!foundNewInLoop) {
+          console.log(`[Check] No new m3u8 at ${jumpTo.toFixed(1)}s.`);
+          // 3회마다 더 멀리 시도 (현재 감지된 위치 기준)
+          if (attempts > 0 && attempts % 3 === 0) {
+            const forceJump = Math.min(currentTotalDetected + 600, totalSeconds - 10); // 10분 뒤로 이동
+            if (forceJump > jumpTo) {
+              console.log(`[Action] Forcing a jump to ${forceJump.toFixed(1)}s to find next segment...`);
+              videoEl.currentTime = forceJump;
+              await new Promise(r => setTimeout(r, 4000));
+            }
+          }
+        }
+      } else {
+        break;
+      }
+      attempts++;
+    }
+
+    return {
+      success: true,
+      foundCount: foundM3u8s.length,
+      totalDetected: currentTotalDetected,
+      message: `스캔 완료 (${foundM3u8s.length}개 탐색)`
+    };
+
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
 function handleAutoScan() {
   const chapterListDiv = document.getElementById('chapter-list');
-  chapterListDiv.innerHTML = '<p style="color: #4CAF50;">자동 스캔 중입니다...<br>플레이어를 조작하지 마세요.</p>';
+  chapterListDiv.innerHTML = '<p style="color: #4CAF50;"><svg class="icon" viewBox="0 0 24 24" style="margin-right: 5px; stroke: #4CAF50;"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.71-2.13.09-2.91a2.18 2.18 0 0 0-3.09-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-5c1.62-2.2 5-3 5-3"/><path d="M12 15v5s3.03-.55 5-2c2.2-1.62 3-5 3-5"/></svg> 정밀 자동 스캔 중입니다...<br>모든 파트를 탐색 중이니 플레이어를 조작하지 마세요.</p>';
 
   const btn = document.getElementById('auto-scan');
   btn.disabled = true;
@@ -231,9 +415,9 @@ function refreshVideoList() {
               btn.className = 'playlist-button';
               btn.style.flex = '1';
               btn.style.marginBottom = '0';
-              btn.textContent = uniqueUrls.length > 1 ? `Chapter ${index + 1} 다운로드` : `playlist.m3u8 다운로드`;
+              btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ` + (uniqueUrls.length > 1 ? `영상 파트 ${index + 1} 다운로드` : `playlist.m3u8 다운로드`);
               btn.onclick = () => {
-                const chapterTitle = uniqueUrls.length > 1 ? `${title}_Chapter${index + 1}` : title;
+                const chapterTitle = uniqueUrls.length > 1 ? `${title}_Part${index + 1}` : title;
                 downloadPlaylistFile(url, chapterTitle);
               };
 
@@ -245,11 +429,11 @@ function refreshVideoList() {
               cmdBtn.style.fontSize = '12px';
               cmdBtn.textContent = 'CMD 복사';
               cmdBtn.onclick = () => {
-                const chapterTitle = uniqueUrls.length > 1 ? `${title}_Chapter${index + 1}` : title;
+                const chapterTitle = uniqueUrls.length > 1 ? `${title}_Part${index + 1}` : title;
                 const baseName = sanitizeTitle(chapterTitle);
                 const mkvOut = `%USERPROFILE%\\Downloads\\${baseName}.mkv`;
                 const cmd = `ffmpeg -i "${url}" -c copy "${mkvOut}"`;
-                copyToClipboard(cmd).then(() => alert(`[Chapter ${index + 1}] FFmpeg 명령어가 복사되었습니다!`));
+                copyToClipboard(cmd).then(() => alert(`[파트 ${index + 1}] FFmpeg 명령어가 복사되었습니다!`));
               };
 
               wrapper.appendChild(btn);
@@ -261,7 +445,7 @@ function refreshVideoList() {
               const guideMsg = document.createElement('p');
               guideMsg.style.color = '#ccc';
               guideMsg.style.fontSize = '12px';
-              guideMsg.innerText = '* 자동 스캔으로 모든 챕터를 찾았습니다.';
+              guideMsg.innerText = '* 정밀 스캔으로 모든 영상 파트를 확보했습니다.';
               chapterListDiv.appendChild(guideMsg);
             }
 
@@ -435,7 +619,7 @@ ${playlistContent}`;
 
 function showSuccessMessage(filename) {
   const actualFilename = filename.split('/').pop();
-  alert(`✅ playlist.m3u8 파일이 저장되었습니다!\n\n파일명: ${actualFilename}\n\n파일 병합 페이지에서 이 파일을 선택하여 다운로드하세요.`);
+  alert(`playlist.m3u8 파일이 저장되었습니다!\n\n파일명: ${actualFilename}\n\n파일 병합 페이지에서 이 파일을 선택하여 다운로드하세요.`);
 }
 
 function extractVideoInfo() {
@@ -458,8 +642,7 @@ function extractVideoInfo() {
     // 1. Performance API
     const resources = performance.getEntriesByType('resource');
     resources.forEach(req => {
-      // 필터링: .m3u8 포함 AND cv=v1 미포함 AND master 미포함(선택사항)
-      if (req.name.includes('.m3u8') && !req.name.includes('cv=v1') && !playlistUrls.includes(req.name)) {
+      if (req.name.includes('.m3u8') && !req.name.includes('.smil') && !playlistUrls.includes(req.name)) {
         playlistUrls.push(req.name);
       }
     });
@@ -467,7 +650,7 @@ function extractVideoInfo() {
     // 2. Video Elements
     const videoElements = document.querySelectorAll('video');
     videoElements.forEach(video => {
-      if (video.src && video.src.includes('.m3u8') && !video.src.includes('cv=v1') && !playlistUrls.includes(video.src)) {
+      if (video.src && video.src.includes('.m3u8') && !video.src.includes('.smil') && !playlistUrls.includes(video.src)) {
         playlistUrls.push(video.src);
       }
     });
@@ -490,10 +673,16 @@ function extractVideoInfo() {
       return url;
     });
 
+    const timeDisplay = document.querySelector('.time_display');
+    const durationText = timeDisplay?.querySelector('.time-duration')?.textContent || "";
+    const currentTimeText = timeDisplay?.querySelector('.time-current')?.textContent || "";
+
     return {
       playlistUrls: playlistUrls,
       title: titleText,
       pageUrl: window.location.href,
+      durationText: durationText,
+      currentTimeText: currentTimeText,
       timestamp: new Date().toISOString()
     };
 

@@ -35,7 +35,7 @@
       "declarativeNetRequest",
       "clipboardWrite"
    ],
-   "version": "3.3.2",
+   "version": "3.4.2",
    "web_accessible_resources": [
       {
          "matches": [
