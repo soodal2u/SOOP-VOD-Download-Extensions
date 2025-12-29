@@ -44,6 +44,7 @@ function handleAdvancedScan() {
     chrome.scripting.executeScript(
       {
         target: { tabId: tabs[0].id },
+        world: 'MAIN',
         function: advancedScanSegments
       },
       (results) => {
@@ -154,8 +155,14 @@ async function advancedScanSegments() {
       }
     }
 
-    while (currentTotalDetected < totalSeconds - 5 && attempts < maxAttempts) {
-      // 사용자 요청: 감지된 총 시간이 전체와 같거나 크면 종료
+    let failedAttempts = 0; // 연속 실패 횟수 기록
+
+    while (currentTotalDetected < totalSeconds - 10 && attempts < maxAttempts) {
+      // 1. 종료 조건 강화: 이미 99% 이상 찾았거나 남은 시간이 매우 적은데 계속 실패할 경우
+      if (currentTotalDetected >= totalSeconds - 20 && failedAttempts >= 2) {
+        console.log("[Scan] Very close to end and no new segments. Stopping.");
+        break;
+      }
       if (currentTotalDetected >= totalSeconds - 1) {
         console.log("[Scan] All durations accounted for. Stopping.");
         break;
@@ -169,7 +176,13 @@ async function advancedScanSegments() {
 
       const videoEl = document.querySelector('video');
       if (videoEl) {
-        videoEl.currentTime = jumpTo;
+        // 네이티브 API(vodCore.seek) 우선 사용, 없으면 currentTime 직접 제어
+        if (window.vodCore && typeof window.vodCore.seek === 'function') {
+          console.log(`[Scan] Using vodCore.seek(${jumpTo.toFixed(1)})`);
+          window.vodCore.seek(jumpTo);
+        } else {
+          videoEl.currentTime = jumpTo;
+        }
         // 네트워크 요청 및 플레이어 동기화를 위해 대기
         await new Promise(r => setTimeout(r, 4500));
 
@@ -183,19 +196,36 @@ async function advancedScanSegments() {
             foundM3u8s.push(url);
             currentTotalDetected += dur;
             foundNewInLoop = true;
+            failedAttempts = 0; // 성공 시 실패 횟수 리셋
             console.log(`[Success] New segment found! Duration: ${dur}s. Total now: ${currentTotalDetected.toFixed(1)}s`);
           }
         }
 
         if (!foundNewInLoop) {
-          console.log(`[Check] No new m3u8 at ${jumpTo.toFixed(1)}s.`);
+          failedAttempts++;
+          console.log(`[Check] No new m3u8 at ${jumpTo.toFixed(1)}s. (Failed attempts: ${failedAttempts})`);
+
+          // 4회 이상 연속 실패 시 더 이상 찾을 수 없다고 판단하고 종료 (끝부분인 경우)
+          if (currentTotalDetected > totalSeconds - 60 && failedAttempts >= 3) {
+            console.log("[Scan] Near end and repeated failure. Finishing scan.");
+            break;
+          }
+
           // 3회마다 더 멀리 시도 (현재 감지된 위치 기준)
           if (attempts > 0 && attempts % 3 === 0) {
             const forceJump = Math.min(currentTotalDetected + 600, totalSeconds - 10); // 10분 뒤로 이동
             if (forceJump > jumpTo) {
               console.log(`[Action] Forcing a jump to ${forceJump.toFixed(1)}s to find next segment...`);
-              videoEl.currentTime = forceJump;
+              if (window.vodCore && typeof window.vodCore.seek === 'function') {
+                window.vodCore.seek(forceJump);
+              } else {
+                videoEl.currentTime = forceJump;
+              }
               await new Promise(r => setTimeout(r, 4000));
+            } else if (currentTotalDetected > totalSeconds - 30) {
+              // 더 이상 점프할 곳이 없는데 끝부분이면 종료
+              console.log("[Scan] Cannot force jump further and near end. Stopping.");
+              break;
             }
           }
         }
@@ -228,6 +258,7 @@ function handleAutoScan() {
     chrome.scripting.executeScript(
       {
         target: { tabId: tabs[0].id },
+        world: 'MAIN', // window.vodCore 접근을 위해 MAIN 월드에서 실행
         function: autoScanChapters
       },
       (results) => {
@@ -393,6 +424,7 @@ function refreshVideoList() {
     chrome.scripting.executeScript(
       {
         target: { tabId: tabs[0].id },
+        world: 'MAIN',
         function: extractVideoInfo
       },
       (results) => {
@@ -468,6 +500,7 @@ function handleFfmpegCopy() {
     chrome.scripting.executeScript(
       {
         target: { tabId: tabs[0].id },
+        world: 'MAIN',
         function: extractVideoInfo
       },
       (results) => {
@@ -597,6 +630,7 @@ ${playlistContent}`;
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
+          world: 'MAIN',
           function: (downloadUrl, fileName) => {
             const link = document.createElement('a');
             link.href = downloadUrl;
