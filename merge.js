@@ -3,12 +3,265 @@ const servers = [
   'https://soop.space:2083'
 ];
 
+const DEFAULT_NOTICE_SOURCE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQn9MdI81blZLum0uthQhTCKHT0xxaZDk7NWmIQL6fCicMgOYNIEx3Z5mF3LLwbv_d0Ny_8JcAd3OZa/pubhtml?gid=0&single=true';
+
 // 현재 서버 인덱스 관리
 let currentServerIndex = parseInt(localStorage.getItem('soop_current_server_index') || '0');
 
 // 현재 서버 URL 가져오기
 function getCurrentServer() {
   return servers[currentServerIndex];
+}
+
+function normalizeGoogleSheetUrl(rawUrl) {
+  if (!rawUrl || !rawUrl.trim()) {
+    return '';
+  }
+
+  try {
+    const url = new URL(rawUrl.trim());
+    const gid = url.searchParams.get('gid') || '0';
+
+    if (url.hostname !== 'docs.google.com') {
+      return url.toString();
+    }
+
+    if (url.pathname.includes('/pubhtml')) {
+      url.pathname = url.pathname.replace('/pubhtml', '/pub');
+      url.searchParams.set('gid', gid);
+      url.searchParams.set('single', url.searchParams.get('single') || 'true');
+      url.searchParams.set('output', 'tsv');
+      return url.toString();
+    }
+
+    if (url.pathname.includes('/pub')) {
+      url.searchParams.set('gid', gid);
+      url.searchParams.set('single', url.searchParams.get('single') || 'true');
+      url.searchParams.set('output', 'tsv');
+      return url.toString();
+    }
+
+    const privateSheetMatch = url.pathname.match(/^\/spreadsheets\/d\/([^/]+)\//);
+    if (privateSheetMatch) {
+      url.pathname = `/spreadsheets/d/${privateSheetMatch[1]}/export`;
+      url.search = '';
+      url.searchParams.set('format', 'tsv');
+      url.searchParams.set('gid', gid);
+      return url.toString();
+    }
+
+    return url.toString();
+  } catch (error) {
+    return '';
+  }
+}
+
+function normalizeNoticeHeader(header) {
+  const normalized = header.trim().toLowerCase().replace(/[\s_-]+/g, '');
+  const headerAliases = {
+    enabled: ['enabled', 'use', 'show', 'visible', '사용', '노출', '활성'],
+    title: ['title', '제목'],
+    message: ['message', 'body', 'content', '내용', '본문', '공지'],
+    linkText: ['linktext', 'buttontext', '버튼텍스트', '링크텍스트', '링크이름'],
+    linkUrl: ['linkurl', 'buttonurl', '버튼링크', '링크url', 'url', '링크'],
+    updatedAt: ['updatedat', 'updated', 'date', '수정일', '업데이트일']
+  };
+
+  for (const [canonicalName, aliases] of Object.entries(headerAliases)) {
+    if (aliases.includes(normalized)) {
+      return canonicalName;
+    }
+  }
+
+  return normalized;
+}
+
+function splitDelimitedLine(line, delimiter) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current);
+  return values;
+}
+
+function parseNoticeSheet(text) {
+  const normalizedText = text.replace(/\r\n/g, '\n').trim();
+  if (!normalizedText) {
+    return [];
+  }
+
+  const lines = normalizedText.split('\n').filter(line => line.trim() !== '');
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const headers = splitDelimitedLine(lines[0], '\t').map(normalizeNoticeHeader);
+  return lines.slice(1).map(line => {
+    const row = {};
+    const values = splitDelimitedLine(line, '\t');
+
+    headers.forEach((header, index) => {
+      if (!header) {
+        return;
+      }
+      row[header] = (values[index] || '').trim();
+    });
+
+    return row;
+  });
+}
+
+function isNoticeEnabled(value) {
+  const normalized = String(value || 'true').trim().toLowerCase();
+  return !['0', 'false', 'no', 'off', '숨김', '비활성'].includes(normalized);
+}
+
+function createNoticeItem(row) {
+  if (!isNoticeEnabled(row.enabled)) {
+    return null;
+  }
+
+  const rawTitle = (row.title || '').trim();
+  const message = (row.message || '').replace(/\\n/g, '\n').trim();
+  const linkText = (row.linkText || '자세히 보기').trim();
+  const linkUrl = (row.linkUrl || '').trim();
+  const updatedAt = (row.updatedAt || '').trim();
+
+  if (!rawTitle && !message && !linkUrl) {
+    return null;
+  }
+
+  return {
+    title: rawTitle || '공지',
+    message,
+    linkText,
+    linkUrl,
+    updatedAt
+  };
+}
+
+function setNoticeStatus(message, isError = false) {
+  const noticeSection = document.getElementById('notice-section');
+  const noticeStatus = document.getElementById('notice-status');
+  noticeSection.hidden = false;
+  noticeStatus.textContent = message;
+  noticeStatus.classList.toggle('error', isError);
+}
+
+function renderNotices(notices) {
+  const noticeSection = document.getElementById('notice-section');
+  const noticeList = document.getElementById('notice-list');
+  const noticeStatus = document.getElementById('notice-status');
+
+  noticeSection.hidden = false;
+  noticeStatus.classList.remove('error');
+  noticeStatus.textContent = `공지 ${notices.length}건을 불러왔습니다.`;
+  noticeList.innerHTML = '';
+
+  notices.forEach(notice => {
+    const noticeItem = document.createElement('article');
+    noticeItem.className = 'notice-item';
+
+    const titleElement = document.createElement('h3');
+    titleElement.textContent = notice.title;
+    noticeItem.appendChild(titleElement);
+
+    if (notice.message) {
+      const messageElement = document.createElement('p');
+      messageElement.className = 'notice-message';
+      messageElement.textContent = notice.message;
+      noticeItem.appendChild(messageElement);
+    }
+
+    if (notice.linkUrl) {
+      const linkElement = document.createElement('a');
+      linkElement.className = 'notice-link';
+      linkElement.href = notice.linkUrl;
+      linkElement.target = '_blank';
+      linkElement.rel = 'noreferrer noopener';
+      linkElement.textContent = notice.linkText;
+      noticeItem.appendChild(linkElement);
+    }
+
+    if (notice.updatedAt) {
+      const metaElement = document.createElement('div');
+      metaElement.className = 'notice-meta';
+      metaElement.textContent = `수정일: ${notice.updatedAt}`;
+      noticeItem.appendChild(metaElement);
+    }
+
+    noticeList.appendChild(noticeItem);
+  });
+}
+
+async function loadNoticeFeed() {
+  const refreshButton = document.getElementById('refresh-notice-btn');
+  const noticeList = document.getElementById('notice-list');
+  const noticeUrl = normalizeGoogleSheetUrl(DEFAULT_NOTICE_SOURCE_URL);
+
+  noticeList.innerHTML = '';
+
+  if (!noticeUrl) {
+    setNoticeStatus('공지 시트 URL이 설정되지 않았습니다.', true);
+    return;
+  }
+
+  refreshButton.disabled = true;
+  refreshButton.textContent = '공지 확인 중...';
+  setNoticeStatus('공지사항을 불러오는 중입니다...');
+
+  try {
+    const response = await fetch(noticeUrl, {
+      method: 'GET',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const text = await response.text();
+    const notices = parseNoticeSheet(text)
+      .map(createNoticeItem)
+      .filter(Boolean);
+
+    if (!notices.length) {
+      setNoticeStatus('표시할 공지가 없습니다.');
+      return;
+    }
+
+    renderNotices(notices);
+  } catch (error) {
+    console.error('공지사항 로드 실패:', error);
+    setNoticeStatus('공지사항을 불러오지 못했습니다. 시트를 웹에 게시했는지와 링크가 올바른지 확인해주세요.', true);
+  } finally {
+    refreshButton.disabled = false;
+    refreshButton.textContent = '공지 새로고침';
+  }
 }
 
 // 다음 서버로 변경
@@ -154,22 +407,27 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('beforeunload', function () {
     switchToNextServer();
   });
+
+  document.getElementById('refresh-notice-btn').addEventListener('click', () => {
+    loadNoticeFeed();
+  });
+
+  loadNoticeFeed();
 });
 
 // M3U8 구간 처리 기능
 document.getElementById('process-playlist').addEventListener('click', async () => {
   const processButton = document.getElementById('process-playlist');
-  const playlistInput = document.getElementById('playlist-file');
   const startTimeInput = document.getElementById('start-time');
   const endTimeInput = document.getElementById('end-time');
   const includeTitleCheckbox = document.getElementById('include-title-playlist');
 
-  const playlistFile = playlistInput.files[0];
+  const playlistFiles = getSelectedPlaylistFiles();
   const startTime = startTimeInput.value;
   const endTime = endTimeInput.value;
   const includeTitle = includeTitleCheckbox.checked;
 
-  if (!playlistFile) {
+  if (playlistFiles.length === 0) {
     alert('playlist.m3u8 파일을 선택해주세요.');
     return;
   }
@@ -202,9 +460,21 @@ document.getElementById('process-playlist').addEventListener('click', async () =
   processButton.innerText = '서버에서 처리 중...';
 
   try {
-    await processPlaylistFile(playlistFile, startSeconds, duration, includeTitle);
+    const result = await processPlaylistFilesSequentially(
+      playlistFiles,
+      startSeconds,
+      duration,
+      includeTitle,
+      {
+        onProgress: (index, playlistFile, total) => {
+          processButton.innerText = total > 1
+            ? `구간 처리 중 (${index + 1}/${total})`
+            : '서버에서 처리 중...';
+        }
+      }
+    );
     processButton.innerText = '구간 영상 다운로드';
-    alert('구간 영상이 성공적으로 다운로드되었습니다!');
+    alert(buildBatchResultMessage(result, includeTitle, result.forceTitle));
   } catch (error) {
     console.error('Error processing playlist:', error);
     alert(`구간 영상 처리 중 오류가 발생했습니다: ${error.message}`);
@@ -217,13 +487,12 @@ document.getElementById('process-playlist').addEventListener('click', async () =
 // 전체 영상 다운로드
 document.getElementById('download-full-video').addEventListener('click', async () => {
   const downloadButton = document.getElementById('download-full-video');
-  const playlistInput = document.getElementById('playlist-file');
   const includeTitleCheckbox = document.getElementById('include-title-playlist');
 
-  const playlistFile = playlistInput.files[0];
+  const playlistFiles = getSelectedPlaylistFiles();
   const includeTitle = includeTitleCheckbox.checked;
 
-  if (!playlistFile) {
+  if (playlistFiles.length === 0) {
     alert('playlist.m3u8 파일을 선택해주세요.');
     return;
   }
@@ -232,9 +501,21 @@ document.getElementById('download-full-video').addEventListener('click', async (
   downloadButton.innerText = '전체 영상 처리 중...';
 
   try {
-    await processPlaylistFile(playlistFile, 0, null, includeTitle);
+    const result = await processPlaylistFilesSequentially(
+      playlistFiles,
+      0,
+      null,
+      includeTitle,
+      {
+        onProgress: (index, playlistFile, total) => {
+          downloadButton.innerText = total > 1
+            ? `전체 처리 중 (${index + 1}/${total})`
+            : '전체 영상 처리 중...';
+        }
+      }
+    );
     downloadButton.innerText = '전체 영상 다운로드';
-    alert('전체 영상이 성공적으로 다운로드되었습니다!');
+    alert(buildBatchResultMessage(result, includeTitle, result.forceTitle));
   } catch (error) {
     console.error('Error downloading full video:', error);
     alert(`전체 영상 다운로드 중 오류가 발생했습니다: ${error.message}`);
@@ -296,15 +577,46 @@ function timeToSeconds(timeString) {
   return (hours * 3600) + (minutes * 60) + seconds;
 }
 
+function sortPlaylistFiles(files) {
+  return [...files].sort((left, right) => (
+    left.name.localeCompare(right.name, 'ko', { numeric: true, sensitivity: 'base' })
+  ));
+}
+
+function getSelectedPlaylistFiles() {
+  const playlistInput = document.getElementById('playlist-file');
+  return sortPlaylistFiles(Array.from(playlistInput?.files || []));
+}
+
 // 플레이리스트 파일에서 제목 추출
 function extractTitleFromPlaylist(filename) {
   return filename.replace('_playlist.m3u8', '').replace('.m3u8', '').trim();
 }
 
+function detectPlaylistModeFromContent(content) {
+  const lines = String(content || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.some((line) => line.startsWith('# Original URL:'))) {
+    return 'standard';
+  }
+
+  const hasExtM3u = lines.includes('#EXTM3U');
+  const hasAbsoluteMediaUrl = lines.some((line) => /^https?:\/\//i.test(line));
+  const hasMediaEntries = lines.some((line) => line.startsWith('#EXTINF:') || line.startsWith('#EXT-X-MAP:'));
+
+  return hasExtM3u && hasAbsoluteMediaUrl && hasMediaEntries ? 'merged' : 'standard';
+}
+
 // 플레이리스트 파일 처리 함수 (서버 자동 선택 적용)
-async function processPlaylistFile(playlistFile, startTime, duration, includeTitle) {
+async function processPlaylistFile(playlistFile, startTime, duration, includeTitle, options = {}) {
   const formData = new FormData();
   const title = extractTitleFromPlaylist(playlistFile.name);
+  const playlistContent = await playlistFile.text();
+  const playlistMode = detectPlaylistModeFromContent(playlistContent);
+  const resolvedIncludeTitle = includeTitle || Boolean(options.forceTitle);
 
   formData.append('playlistFile', playlistFile);
   formData.append('startTime', startTime.toString());
@@ -312,7 +624,8 @@ async function processPlaylistFile(playlistFile, startTime, duration, includeTit
     formData.append('duration', duration.toString());
   }
   formData.append('title', title);
-  formData.append('includeTitle', includeTitle.toString());
+  formData.append('includeTitle', resolvedIncludeTitle.toString());
+  formData.append('playlistMode', playlistMode);
 
   const server = await findHealthyServer();
   const response = await fetch(`${server}/process-playlist`, {
@@ -333,11 +646,75 @@ async function processPlaylistFile(playlistFile, startTime, duration, includeTit
   const a = document.createElement('a');
   a.style.display = 'none';
   a.href = url;
-  a.download = includeTitle ? `${title}.mp4` : 'video.mp4';
+  a.download = resolvedIncludeTitle ? `${title}.mp4` : 'video.mp4';
   document.body.appendChild(a);
   a.click();
   window.URL.revokeObjectURL(url);
   document.body.removeChild(a);
+  return {
+    title,
+    downloadName: a.download
+  };
+}
+
+function buildBatchResultMessage(result, includeTitle, forceTitle) {
+  const lines = [
+    `${result.successes.length}개 파일 다운로드를 요청했습니다.`
+  ];
+
+  if (forceTitle && !includeTitle) {
+    lines.push('동일한 video.mp4 이름 충돌을 막기 위해 제목 포함 저장을 자동 적용했습니다.');
+  }
+
+  if (result.failures.length > 0) {
+    lines.push(`실패 ${result.failures.length}개`);
+    result.failures.slice(0, 3).forEach((failure) => {
+      lines.push(`- ${failure.name}: ${failure.message}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+async function processPlaylistFilesSequentially(playlistFiles, startTime, duration, includeTitle, options = {}) {
+  const forceTitle = playlistFiles.length > 1;
+  const result = {
+    successes: [],
+    failures: [],
+    forceTitle
+  };
+
+  for (let index = 0; index < playlistFiles.length; index++) {
+    const playlistFile = playlistFiles[index];
+    if (typeof options.onProgress === 'function') {
+      options.onProgress(index, playlistFile, playlistFiles.length);
+    }
+
+    try {
+      const downloadResult = await processPlaylistFile(
+        playlistFile,
+        startTime,
+        duration,
+        includeTitle,
+        { forceTitle }
+      );
+      result.successes.push({
+        name: playlistFile.name,
+        title: downloadResult.title
+      });
+    } catch (error) {
+      result.failures.push({
+        name: playlistFile.name,
+        message: error.message
+      });
+    }
+
+    if (index < playlistFiles.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  return result;
 }
 
 // 서버 재시작 기능 (서버 자동 선택 적용)

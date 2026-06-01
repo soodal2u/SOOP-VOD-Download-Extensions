@@ -4,59 +4,161 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>파일 병합 및 편집</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>SOOP 병합 작업실</title>
+  <link rel="stylesheet" href="styles.css?v=3.14.8">
 </head>
 
-<body>
-  <div class="container">
-    <h1>M3U8 플레이리스트 편집</h1>
-
-    <!-- 서버 상태 표시 영역 추가 -->
-    <div class="server-status">
-      <div id="current-server-display">현재 서버: 확인 중...</div>
-      <div class="server-controls">
-        <button id="change-server-btn" class="server-button">다음 서버로 변경</button>
-        <button id="refresh-server-btn" class="server-button">서버 새로고침</button>
+<body class="merge-body">
+  <div class="merge-shell">
+    <header class="merge-topbar">
+      <div class="topbar-brand">
+        <p class="topbar-eyebrow">SOOP 병합 작업실</p>
+        <h1>M3U8 병합</h1>
       </div>
-    </div>
-
-    <div class="section">
-      <p>팝업에서 다운로드한 playlist.m3u8 파일을 "soop video download" 폴더에서 선택하세요</p>
-
-      <input type="file" id="playlist-file" accept=".m3u8">
-
-      <div class="checkbox-container">
-        <input type="checkbox" id="include-title-playlist" checked>
-        <label for="include-title-playlist">파일명에 제목 포함</label>
+      <div class="topbar-badges" aria-hidden="true">
+        <span class="topbar-badge">구간 다운로드</span>
+        <span class="topbar-badge">전체 저장</span>
+        <span class="topbar-badge">서버 상태 확인</span>
       </div>
+    </header>
 
-      <div class="time-inputs">
-        <label for="start-time">시작 시간 (시:분:초):</label>
-        <input type="text" id="start-time" placeholder="00:00:00">
+    <main class="merge-dashboard">
+      <section class="panel workflow-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-eyebrow">작업</p>
+            <h2>M3U8 업로드 후 바로 다운로드</h2>
+          </div>
+          <p class="panel-copy">구간 잘라내기와 전체 영상 저장을 한 카드 안에서 끝낼 수 있게 정리했습니다.</p>
+        </div>
 
-        <label for="end-time">종료 시간 (시:분:초):</label>
-        <input type="text" id="end-time" placeholder="01:00:00">
+        <div class="step-strip">
+          <article class="step-card">
+            <span class="step-index">1</span>
+            <strong>파일 선택</strong>
+            <p>팝업에서 저장한 `playlist.m3u8` 파일을 그대로 넣으세요.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-index">2</span>
+            <strong>시간 범위 입력</strong>
+            <p>구간 추출이 필요하면 시작 시간과 종료 시간을 입력합니다.</p>
+          </article>
+          <article class="step-card">
+            <span class="step-index">3</span>
+            <strong>다운로드 실행</strong>
+            <p>구간 또는 전체 저장 버튼으로 바로 작업을 시작합니다.</p>
+          </article>
+        </div>
+
+        <div class="workflow-fields">
+          <label class="upload-field" for="playlist-file">
+            <span class="field-label">플레이리스트 파일</span>
+            <span class="field-help">SOOP 팝업에서 내려받은 M3U8 파일을 그대로 넣으세요. 여러 개를 선택하면 파트별로 순차 다운로드합니다.</span>
+            <input type="file" id="playlist-file" accept=".m3u8" multiple>
+          </label>
+
+          <label class="checkbox-card" for="include-title-playlist">
+            <input type="checkbox" id="include-title-playlist" checked>
+            <span class="checkbox-copy">
+              <strong>파일명에 제목 포함</strong>
+              <span>저장되는 MP4 파일 이름에 방송 제목을 함께 붙입니다.</span>
+            </span>
+          </label>
+
+          <div class="time-grid">
+            <label class="field" for="start-time">
+              <span class="field-label">시작 시간</span>
+              <span class="field-help">예시: `00:05:30`</span>
+              <input type="text" id="start-time" placeholder="00:00:00">
+            </label>
+
+            <label class="field" for="end-time">
+              <span class="field-label">종료 시간</span>
+              <span class="field-help">예시: `01:00:00`</span>
+              <input type="text" id="end-time" placeholder="01:00:00">
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button id="process-playlist" class="download-button" type="button">구간 영상 다운로드</button>
+            <button id="download-full-video" class="full-download-button" type="button">전체 영상 다운로드</button>
+          </div>
+          <p class="action-hint">구간 추출은 시작 시간과 종료 시간을 모두 입력해야 하고, 여러 파일을 고르면 파트별로 순차 다운로드합니다.</p>
+        </div>
+      </section>
+
+      <section class="panel server-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-eyebrow">서버</p>
+            <h2>현재 작업 서버</h2>
+          </div>
+          <p class="panel-copy">다운로드와 병합 요청이 전송되는 서버 상태를 먼저 확인합니다.</p>
+        </div>
+
+        <div class="server-meta">
+          <div id="current-server-display" class="server-display">현재 서버: 확인 중...</div>
+          <div class="server-controls">
+            <button id="change-server-btn" class="server-button" type="button">다음 서버</button>
+            <button id="refresh-server-btn" class="server-button ghost" type="button">상태 새로고침</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="notice-section" class="panel notice-panel" hidden>
+        <div class="panel-head notice-head">
+          <div>
+            <p class="panel-eyebrow">운영 공지</p>
+            <h2>공지사항</h2>
+          </div>
+          <button id="refresh-notice-btn" class="notice-refresh-button" type="button">공지 새로고침</button>
+        </div>
+        <p id="notice-status" class="notice-status">공지사항을 불러오는 중입니다...</p>
+        <div id="notice-list" class="notice-list"></div>
+      </section>
+
+      <div class="utility-grid">
+        <section class="panel utility-card subplus-panel">
+          <div class="panel-head utility-head">
+            <div>
+              <p class="panel-eyebrow">구독플러스</p>
+              <h2>전용 다운로더</h2>
+            </div>
+          </div>
+          <p class="panel-copy wide">구독플러스 영상을 위해 별도 ZIP 프로그램이 필요한 경우 이 버튼으로 바로 받을 수 있습니다.</p>
+          <button id="download-zip" class="playlist-button" type="button">ZIP 파일 다운로드</button>
+        </section>
+
+        <section class="panel utility-card restart-panel">
+          <div class="panel-head utility-head">
+            <div>
+              <p class="panel-eyebrow">운영 도구</p>
+              <h2>서버 재시작</h2>
+            </div>
+          </div>
+          <p class="panel-copy wide">서버가 응답하지 않거나 다운로드가 지연될 때 재시작을 요청할 수 있습니다.</p>
+          <button id="restart-server" class="restart-button" type="button">서버 재시작</button>
+          <div id="countdown" class="countdown" style="display: none;"></div>
+        </section>
+
+        <section class="panel utility-card guide-panel">
+          <div class="panel-head utility-head">
+            <div>
+              <p class="panel-eyebrow">가이드</p>
+              <h2>빠른 체크</h2>
+            </div>
+          </div>
+          <ul class="quick-guide">
+            <li>구간 추출 전에는 시작 시간이 종료 시간보다 먼저인지 확인하세요.</li>
+            <li>M3U8 파일명에 제목이 포함돼 있으면 저장 결과도 더 찾기 쉬워집니다.</li>
+            <li>다운로드 실패가 반복되면 서버 새로고침 후 다시 시도해 보세요.</li>
+          </ul>
+        </section>
       </div>
-
-      <button id="process-playlist" class="download-button">구간 영상 다운로드</button>
-      <button id="download-full-video" class="full-download-button">전체 영상 다운로드</button>
-    </div>
-
-    <div class="section">
-      <h2>구독 플러스 VOD 다운로더</h2>
-      <p>구독플러스 영상을 다운로드 할수 있는 프로그램을 다운받습니다.</p>
-      <button id="download-zip" class="playlist-button">ZIP 파일 다운로드</button>
-    </div>
-
-    <div class="section">
-      <h2>서버 관리</h2>
-      <button id="restart-server" class="restart-button">서버 재시작</button>
-      <div id="countdown" class="countdown" style="display: none;"></div>
-    </div>
+    </main>
   </div>
 
-  <script src="merge.js"></script>
+  <script src="merge.js?v=3.14.8"></script>
 </body>
 
 </html>

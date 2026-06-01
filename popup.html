@@ -1,152 +1,177 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 
 <head>
   <meta charset="UTF-8">
-  <title>Soop VOD Downloader</title>
-  <style>
-    body {
-      background-color: #4d4d4d;
-      font-family: Arial, sans-serif;
-      padding: 10px;
-      width: 300px;
-      text-align: center;
-    }
-
-    h1 {
-      font-size: 18px;
-      margin-bottom: 20px;
-      color: white;
-    }
-
-    button {
-      display: block;
-      margin: 15px auto;
-      padding: 15px;
-      width: calc(100% - 20px);
-      box-sizing: border-box;
-      border-radius: 8px;
-      border: none;
-      background-color: #5c5c5c;
-      color: white;
-      cursor: pointer;
-      transition: background-color 0.3s, transform 0.1s;
-      font-size: 16px;
-    }
-
-    button:hover {
-      background-color: #6f6f6f;
-    }
-
-    button:active {
-      transform: scale(0.95);
-      background-color: #4a4a4a;
-    }
-
-    button:disabled {
-      background-color: #3a3a3a;
-      cursor: not-allowed;
-    }
-
-    /* 특별한 버튼 색상 */
-    .playlist-button {
-      background-color: #2196F3;
-    }
-
-    .playlist-button:hover {
-      background-color: #1976D2;
-    }
-
-    .playlist-button:active {
-      background-color: #1565C0;
-    }
-
-    .support-button {
-      background-color: #FFAB00;
-      color: #000000;
-      font-weight: bold;
-    }
-
-    .support-button:hover {
-      background-color: #FF8F00;
-    }
-
-    .support-button:active {
-      background-color: #FF6F00;
-    }
-
-    img {
-      width: 100%;
-      height: auto;
-      margin-bottom: 10px;
-    }
-
-    /* 아이콘 스타일 */
-    .icon {
-      display: inline-block;
-      width: 18px;
-      height: 18px;
-      vertical-align: middle;
-      margin-right: 8px;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOOP 다시보기 다운로드</title>
+  <link rel="stylesheet" href="popup.css?v=3.14.8">
 </head>
 
-<body>
-  <img src="soop_logo.svg" alt="Soop VOD Logo">
-  <h1>숲 영상 다운로드</h1>
-  <button id="download-playlist" class="playlist-button" style="display: none;">
-    <svg class="icon" viewBox="0 0 24 24">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-    playlist.m3u8 다운로드
-  </button>
-  <div id="chapter-list"></div>
-  <button id="auto-scan">
-    <svg class="icon" viewBox="0 0 24 24">
-      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.71-2.13.09-2.91a2.18 2.18 0 0 0-3.09-.09z" />
-      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-      <path d="M9 12H4s.55-3.03 2-5c1.62-2.2 5-3 5-3" />
-      <path d="M12 15v5s3.03-.55 5-2c2.2-1.62 3-5 3-5" />
-    </svg>
-    정밀 자동 스캔 (모든 파트 찾기)
-  </button>
-  <button id="refresh-list">
-    <svg class="icon" viewBox="0 0 24 24">
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
-    목록 새로고침
-  </button>
-  <button id="copy-ffmpeg">로컬에서 다운로드 하기</button>
-  <button id="install-ffmpeg">FFMPEG 다운로드 하기</button>
-  <button id="merge-move">파일 병합 페이지</button>
-  <button id="support-button" class="support-button">
-    <svg class="icon" viewBox="0 0 24 24">
-      <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
-      <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
-      <line x1="6" y1="2" x2="6" y2="4" />
-      <line x1="10" y1="2" x2="10" y2="4" />
-      <line x1="14" y1="2" x2="14" y2="4" />
-    </svg>
-    서버비 후원 감사합니다
-  </button>
-  <script src="popup.js"></script>
+<body class="popup-body">
+  <div class="app-shell">
+    <header id="video-hero" class="hero">
+      <div id="hero-media" class="hero-media" aria-hidden="true"></div>
+      <div class="hero-top">
+        <div class="hero-logo-wrap">
+          <img src="soop_logo.svg" alt="SOOP 다시보기 다운로드" class="hero-logo">
+        </div>
+        <div class="hero-token">다시보기 센터</div>
+      </div>
+
+      <div class="hero-copy">
+        <p class="hero-eyebrow">SOOP 다시보기 다운로드</p>
+        <h1 id="video-title" class="hero-title">현재 SOOP 다시보기를 확인하는 중</h1>
+        <p id="video-subtitle" class="hero-subtitle">VOD 다시보기와 SOOP 다운로드, 구독플러스 다운로드를 한 화면에서 정리합니다.</p>
+        <div class="hero-meta">
+          <span id="video-access-badge" class="meta-chip">페이지 확인 중</span>
+          <span id="video-duration-badge" class="meta-chip subtle">길이 확인 중</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="overview-panel">
+      <div class="overview-grid">
+        <div class="overview-item">
+          <span class="overview-label">유형</span>
+          <strong id="video-mode" class="overview-value">판별 중</strong>
+        </div>
+        <div class="overview-item">
+          <span class="overview-label">재생</span>
+          <strong id="video-timing" class="overview-value">--:-- / --:--</strong>
+        </div>
+        <div class="overview-item">
+          <span class="overview-label">파트</span>
+          <strong id="video-part-count" class="overview-value">0개</strong>
+        </div>
+      </div>
+      <p id="action-hint" class="hint-line">영상 다운로드 버튼은 구독플러스도 호환됩니다.</p>
+    </section>
+
+    <main class="content-stack">
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-eyebrow">다운로드</p>
+            <h2>다운로드 파트</h2>
+          </div>
+          <p class="section-caption">감지된 파트별로 바로 저장하거나 M3U8를 백업합니다.</p>
+        </div>
+        <div id="chapter-list" class="chapter-list" aria-live="polite"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="section-eyebrow">도구</p>
+            <h2>작업 도구</h2>
+          </div>
+          <p class="section-caption">채팅 ASS, 정밀 스캔, ffmpeg, 병합 페이지를 빠르게 엽니다.</p>
+        </div>
+
+        <div class="chat-actions">
+          <button id="download-chat-ass" class="chat-button tool-button" type="button">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              <path d="M8 9h8" />
+              <path d="M8 13h5" />
+            </svg>
+            <span class="button-copy">
+              <span class="button-label">채팅 ASS</span>
+              <span class="button-note">자막 파일 다운로드</span>
+            </span>
+          </button>
+
+          <button id="open-chat-settings" class="chat-settings-button tool-button" type="button" title="채팅 ASS 설정">
+            <svg class="icon" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8.92 4.6H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.24.7.56 1 .94.26.33.41.74.41 1.16s-.15.83-.41 1.16c-.3.38-.64.7-1 .94z" />
+            </svg>
+            <span class="button-copy">
+              <span class="button-label">설정</span>
+              <span class="button-note">채팅 오버레이 조정</span>
+            </span>
+          </button>
+        </div>
+
+        <div class="tool-grid">
+          <button id="auto-scan" class="secondary-button tool-button" type="button">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.71-2.13.09-2.91a2.18 2.18 0 0 0-3.09-.09z" />
+              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+              <path d="M9 12H4s.55-3.03 2-5c1.62-2.2 5-3 5-3" />
+              <path d="M12 15v5s3.03-.55 5-2c2.2-1.62 3-5 3-5" />
+            </svg>
+            <span class="button-copy">
+              <span class="button-label">정밀 자동 스캔</span>
+              <span class="button-note">모든 파트 찾기</span>
+            </span>
+          </button>
+
+          <button id="refresh-list" class="secondary-button tool-button" type="button">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+              <path d="M3 21v-5h5" />
+            </svg>
+            <span class="button-copy">
+              <span class="button-label">다시 감지</span>
+              <span class="button-note">현재 영상 정보 새로고침</span>
+            </span>
+          </button>
+
+          <button id="copy-ffmpeg" class="secondary-button tool-button" type="button">
+            <span class="button-copy">
+              <span class="button-label">로컬 ffmpeg CMD</span>
+              <span class="button-note">현재 영상 명령어 복사</span>
+            </span>
+          </button>
+
+          <button id="install-ffmpeg" class="secondary-button tool-button" type="button">
+            <span class="button-copy">
+              <span class="button-label">FFmpeg 설치</span>
+              <span class="button-note">winget 명령 복사</span>
+            </span>
+          </button>
+        </div>
+
+        <button id="merge-move" class="secondary-button tool-button tool-button-wide" type="button">
+            <span class="button-copy">
+              <span class="button-label">파일 병합 페이지 열기</span>
+              <span class="button-note">다운로드한 M3U8 편집과 병합으로 이동</span>
+            </span>
+        </button>
+      </section>
+
+      <section class="section support-section">
+        <div class="section-head">
+          <div>
+            <p class="section-eyebrow">후원</p>
+            <h2>서버 운영 후원</h2>
+          </div>
+          <p class="section-caption">다운로드와 병합 기능 유지 비용에 직접 연결됩니다.</p>
+        </div>
+
+        <button id="support-button" class="support-button tool-button" type="button">
+          <svg class="icon" viewBox="0 0 24 24">
+            <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
+            <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
+            <line x1="6" y1="2" x2="6" y2="4" />
+            <line x1="10" y1="2" x2="10" y2="4" />
+            <line x1="14" y1="2" x2="14" y2="4" />
+          </svg>
+          <span class="button-copy">
+            <span class="button-label">서버비 후원하기</span>
+            <span class="button-note">후원 페이지로 이동</span>
+          </span>
+        </button>
+      </section>
+    </main>
+  </div>
+
+  <script src="chat-ass-config.js?v=3.14.8"></script>
+  <script src="popup.js?v=3.14.8"></script>
 </body>
 
 </html>
