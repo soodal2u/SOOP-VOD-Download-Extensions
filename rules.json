@@ -6,7 +6,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "pa.sooplive.co.kr",
+      "urlFilter": "pa.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -31,7 +31,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "vod-player.sooplive.co.kr",
+      "urlFilter": "vod-player.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -56,7 +56,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "deapi.sooplive.co.kr",
+      "urlFilter": "deapi.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -81,7 +81,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "reqde.sooplive.co.kr",
+      "urlFilter": "reqde.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -106,7 +106,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "windroloxy.sooplive.co.kr",
+      "urlFilter": "windroloxy.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -131,7 +131,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "vod-player001.sooplive.co.kr",
+      "urlFilter": "vod-player001.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -156,7 +156,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "vod-player002.sooplive.co.kr",
+      "urlFilter": "vod-player002.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",
@@ -181,7 +181,7 @@
       "type": "block"
     },
     "condition": {
-      "urlFilter": "vod-player003.sooplive.co.kr",
+      "urlFilter": "vod-player003.sooplive.com",
       "resourceTypes": [
         "main_frame",
         "sub_frame",

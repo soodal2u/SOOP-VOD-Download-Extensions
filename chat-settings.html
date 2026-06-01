@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>채팅 ASS 설정</title>
+  <link rel="stylesheet" href="chat-settings.css?v=3.14.8">
+</head>
+
+<body class="chat-settings-body">
+  <div class="settings-shell">
+    <header class="settings-header">
+      <div class="settings-hero-copy">
+        <p class="settings-eyebrow">SOOP 채팅 오버레이</p>
+        <h1>채팅 오버레이 설정</h1>
+        <p class="settings-subtitle">현재 영상의 썸네일과 샘플 채팅으로 미리보기를 보여주고, 슬라이더와 숫자 입력으로 위치, 크기, 색상, 표시 밀도를 바로 조절할 수 있게 정리했습니다.</p>
+      </div>
+      <div class="settings-header-actions">
+        <button id="restore-defaults" class="action-button secondary" type="button">기본값 복원</button>
+        <button id="close-page" class="action-button secondary" type="button">닫기</button>
+      </div>
+    </header>
+
+    <section class="settings-overview">
+      <article class="overview-card">
+        <strong>실시간 미리보기</strong>
+        <span>현재 영상 기준으로 바뀐 설정이 즉시 반영됩니다.</span>
+      </article>
+      <article class="overview-card">
+        <strong>자동 저장</strong>
+        <span>조절한 값은 바로 저장되어 실제 ASS 생성에도 동일하게 적용됩니다.</span>
+      </article>
+      <article class="overview-card">
+        <strong>직접 입력 지원</strong>
+        <span>슬라이더 옆 숫자 칸에 직접 입력해서 빠르게 맞출 수 있습니다.</span>
+      </article>
+    </section>
+
+    <main class="settings-grid">
+      <section class="settings-card preview-card">
+        <div class="preview-meta">
+          <div class="preview-heading">
+            <p class="section-kicker">미리보기</p>
+            <h2>현재 영상 기준 프리뷰</h2>
+            <p id="context-title" class="preview-title">현재 영상을 확인하는 중입니다.</p>
+            <p id="context-page" class="preview-subtitle"></p>
+          </div>
+          <p id="sample-status" class="preview-sample-status">샘플 채팅을 불러오는 중입니다.</p>
+        </div>
+
+        <div id="preview-stage" class="preview-stage">
+          <div id="preview-placeholder" class="preview-placeholder">현재 영상 썸네일을 찾지 못했습니다. 그래도 위치와 크기 설정은 계속 조절할 수 있습니다.</div>
+          <div id="preview-overlay" class="preview-overlay">
+            <div id="preview-overlay-title" class="preview-overlay-title">SOOP 채팅</div>
+            <div id="preview-overlay-lines" class="preview-overlay-lines"></div>
+          </div>
+        </div>
+
+        <div class="preview-footer">
+          <span id="context-timing">현재 시점: -</span>
+          <span>설정은 자동 저장됩니다.</span>
+        </div>
+      </section>
+
+      <section class="settings-card controls-card">
+        <div class="settings-tabs" role="tablist" aria-label="자막 설정 탭">
+          <button class="settings-tab is-active" type="button" role="tab" aria-selected="true" data-tab-target="preset">프리셋</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="display">표시</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="format">색상</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="rolling">롤링</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="position">위치</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="text">글자</button>
+        </div>
+
+        <div class="settings-tab-panels">
+          <section class="tab-panel is-active" data-tab-panel="preset">
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">프리셋</p>
+                  <h3>빠르게 시작하기</h3>
+                </div>
+                <p class="section-description">가장 가까운 결과를 먼저 고른 뒤 세부 항목만 조절하면 훨씬 빠릅니다.</p>
+              </div>
+              <div id="preset-list" class="preset-list"></div>
+              <p class="hint-text">`우측 중단 기본`은 FHD 게임 화면 오른쪽 중간 채팅 느낌에 맞춘 템플릿입니다.</p>
+            </section>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="display" hidden>
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">표시</p>
+                  <h3>기본 표시 방식</h3>
+                </div>
+                <p class="section-description">제목과 배경 패널을 먼저 켜고 끄면서 전체 느낌을 결정합니다.</p>
+              </div>
+
+              <div class="control-grid two-column">
+                <label class="toggle-row" for="setting-show-title">
+                  <input id="setting-show-title" type="checkbox">
+                  <span>상단 제목 표시</span>
+                </label>
+
+                <label class="toggle-row" for="setting-show-backdrop">
+                  <input id="setting-show-backdrop" type="checkbox">
+                  <span>배경 패널 표시</span>
+                </label>
+              </div>
+
+              <label class="control-field" for="setting-title-text">
+                <div class="control-header">
+                  <span>제목 문구</span>
+                </div>
+                <input id="setting-title-text" type="text" maxlength="32" placeholder="SOOP 채팅">
+              </label>
+
+              <label class="control-field" for="setting-backdrop-opacity">
+                <div class="control-header">
+                  <span>배경 불투명도</span>
+                  <span id="value-backdrop-opacity" class="control-value"></span>
+                </div>
+                <input id="setting-backdrop-opacity" type="range" min="0" max="100" step="1">
+              </label>
+            </section>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="format" hidden>
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">형식과 색상</p>
+                  <h3>문구와 유저 등급 색상</h3>
+                </div>
+                <p class="section-description">닉네임 형식과 등급별 색상을 먼저 맞추면 미리보기 분위기가 바로 달라집니다.</p>
+              </div>
+
+              <label class="control-field" for="setting-message-format">
+                <div class="control-header">
+                  <span>채팅 출력 형식</span>
+                </div>
+                <input id="setting-message-format" type="text" maxlength="80" placeholder="{nickname} {message}">
+              </label>
+              <p class="hint-text">사용 가능한 치환자: `{nickname}`, `{message}`. 예시: `[{nickname}] {message}` 또는 `{nickname} : {message}`</p>
+
+              <div class="control-grid two-column">
+                <label class="control-field" for="setting-fanclub-color">
+                  <div class="control-header">
+                    <span>팬클럽 색상</span>
+                    <span id="value-fanclub-color" class="control-value"></span>
+                  </div>
+                  <input id="setting-fanclub-color" type="color">
+                </label>
+                <label class="control-field" for="setting-supporter-color">
+                  <div class="control-header">
+                    <span>열혈팬 색상</span>
+                    <span id="value-supporter-color" class="control-value"></span>
+                  </div>
+                  <input id="setting-supporter-color" type="color">
+                </label>
+                <label class="control-field" for="setting-normal-color">
+                  <div class="control-header">
+                    <span>일반 유저 색상</span>
+                    <span id="value-normal-color" class="control-value"></span>
+                  </div>
+                  <input id="setting-normal-color" type="color">
+                </label>
+                <label class="control-field" for="setting-subscriber-color">
+                  <div class="control-header">
+                    <span>구독팬 색상</span>
+                    <span id="value-subscriber-color" class="control-value"></span>
+                  </div>
+                  <input id="setting-subscriber-color" type="color">
+                </label>
+              </div>
+            </section>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="rolling" hidden>
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">롤링</p>
+                  <h3>표시 밀도와 갱신 속도</h3>
+                </div>
+                <p class="section-description">값이 낮을수록 더 자주 갱신되고, 줄 수가 많을수록 화면이 더 빽빽해집니다.</p>
+              </div>
+
+              <div class="control-grid two-column">
+                <label class="control-field" for="setting-update-interval">
+                  <div class="control-header">
+                    <span>롤링 갱신 강도</span>
+                    <span id="value-update-interval" class="control-value"></span>
+                  </div>
+                  <input id="setting-update-interval" type="range" min="0" max="100" step="1">
+                </label>
+                <label class="control-field" for="setting-line-limit">
+                  <div class="control-header">
+                    <span>표시 줄 밀도</span>
+                    <span id="value-line-limit" class="control-value"></span>
+                  </div>
+                  <input id="setting-line-limit" type="range" min="0" max="100" step="1">
+                </label>
+              </div>
+            </section>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="position" hidden>
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">위치와 크기</p>
+                  <h3>채팅창 위치 조정</h3>
+                </div>
+                <p class="section-description">왼쪽과 위쪽 위치를 먼저 맞추고, 그 다음 가로와 세로 크기를 정리하면 편합니다.</p>
+              </div>
+
+              <div class="control-grid two-column">
+                <label class="control-field" for="setting-panel-left">
+                  <div class="control-header">
+                    <span>왼쪽 위치</span>
+                    <span id="value-panel-left" class="control-value"></span>
+                  </div>
+                  <input id="setting-panel-left" type="range" min="0" max="100" step="1">
+                </label>
+                <label class="control-field" for="setting-panel-top">
+                  <div class="control-header">
+                    <span>위쪽 위치</span>
+                    <span id="value-panel-top" class="control-value"></span>
+                  </div>
+                  <input id="setting-panel-top" type="range" min="0" max="100" step="1">
+                </label>
+                <label class="control-field" for="setting-panel-width">
+                  <div class="control-header">
+                    <span>가로 크기</span>
+                    <span id="value-panel-width" class="control-value"></span>
+                  </div>
+                  <input id="setting-panel-width" type="range" min="0" max="100" step="1">
+                </label>
+                <label class="control-field" for="setting-panel-height">
+                  <div class="control-header">
+                    <span>세로 크기</span>
+                    <span id="value-panel-height" class="control-value"></span>
+                  </div>
+                  <input id="setting-panel-height" type="range" min="0" max="100" step="1">
+                </label>
+              </div>
+            </section>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="text" hidden>
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">글자</p>
+                  <h3>텍스트 크기</h3>
+                </div>
+                <p class="section-description">미리보기는 FHD 기준 결과를 현재 화면 크기에 맞춰 축소해서 보여줍니다.</p>
+              </div>
+
+              <div class="control-grid two-column">
+                <label class="control-field" for="setting-title-font-size">
+                  <div class="control-header">
+                    <span>제목 글자 크기</span>
+                    <span id="value-title-font-size" class="control-value"></span>
+                  </div>
+                  <input id="setting-title-font-size" type="range" min="0" max="100" step="1">
+                </label>
+                <label class="control-field" for="setting-font-size">
+                  <div class="control-header">
+                    <span>채팅 글자 크기</span>
+                    <span id="value-font-size" class="control-value"></span>
+                  </div>
+                  <input id="setting-font-size" type="range" min="0" max="100" step="1">
+                </label>
+              </div>
+            </section>
+
+            <section class="control-section">
+              <div class="section-head">
+                <div>
+                  <p class="section-kicker">안내</p>
+                  <h3>사용 팁</h3>
+                </div>
+                <p class="section-description">현재 영상 기준으로 작동하므로, 다른 영상에 맞추려면 팝업에서 다시 진입해야 합니다.</p>
+              </div>
+              <div class="settings-empty">
+                채팅 설정 버튼은 팝업에서 연 현재 영상 정보를 기준으로 동작합니다.<br>
+                새 영상을 기준으로 조절하려면 해당 영상 페이지에서 팝업을 다시 열고 `설정` 버튼을 눌러 주세요.
+              </div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="chat-ass-config.js?v=3.14.8"></script>
+  <script src="chat-settings.js?v=3.14.8"></script>
+</body>
+
+</html>

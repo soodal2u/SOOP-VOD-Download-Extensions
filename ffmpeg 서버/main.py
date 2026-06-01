@@ -175,6 +175,197 @@ def delete_file_later(file_path, delay=10):
     threading.Thread(target=delayed_delete).start()
 
 
+def decode_subprocess_output(raw_output):
+    if not raw_output:
+        return ""
+
+    for encoding in ("utf-8", "cp949"):
+        try:
+            return raw_output.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    return raw_output.decode("utf-8", errors="replace")
+
+
+def format_ffmpeg_error(stderr_text, return_code):
+    lines = [line.strip() for line in str(stderr_text or "").splitlines() if line.strip()]
+    if not lines:
+        return f"FFmpeg exited with code {return_code}."
+
+    error_markers = (
+        "error",
+        "invalid",
+        "failed",
+        "could not",
+        "unable",
+        "conversion failed",
+        "non monoton",
+        "moov",
+        "av_interleaved_write_frame",
+    )
+    prioritized = [
+        line for line in lines if any(marker in line.lower() for marker in error_markers)
+    ]
+    if prioritized:
+        return "\n".join(prioritized[-12:])
+
+    return "\n".join(lines[-12:])
+
+
+def detect_playlist_mode_from_content(content):
+    lines = [line.strip() for line in str(content or "").splitlines() if line.strip()]
+
+    if any(line.startswith("# Original URL:") for line in lines):
+        return "standard"
+
+    has_ext_m3u = "#EXTM3U" in lines
+    has_absolute_media_url = any(line.startswith(("http://", "https://")) for line in lines)
+    has_media_entries = any(
+        line.startswith("#EXTINF:") or line.startswith("#EXT-X-MAP:")
+        for line in lines
+    )
+
+    return "merged" if has_ext_m3u and has_absolute_media_url and has_media_entries else "standard"
+
+
+def playlist_uses_fmp4(content):
+    lines = [line.strip().lower() for line in str(content or "").splitlines() if line.strip()]
+    return any(line.startswith("#ext-x-map:") for line in lines) or any(
+        ".m4s" in line for line in lines
+    )
+
+
+def process_with_uploaded_merged_playlist(
+    playlist_content, start_time=0, duration=None, title="video", include_title=False
+):
+    """업로드된 통합 m3u8 파일을 직접 읽어 파일로 병합"""
+    playlist_path = os.path.abspath(
+        os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4().hex}_playlist.m3u8")
+    )
+    output_path = None
+    temp_mkv_path = None
+    response_sent = False
+
+    try:
+        with open(playlist_path, "w", encoding="utf-8", newline="\n") as temp_playlist:
+            temp_playlist.write(playlist_content)
+
+        if include_title and title:
+            safe_title = re.sub(r'[<>:"/\\|?*\[\]()]', "_", title)[:80]
+            output_filename = f"{safe_title}.mp4"
+        else:
+            output_filename = f"video_{int(time.time())}.mp4"
+
+        output_filename = get_unique_filename(OUTPUT_FOLDER, sanitize_filename(output_filename))
+        output_path = os.path.abspath(os.path.join(OUTPUT_FOLDER, output_filename))
+        temp_mkv_path = os.path.abspath(
+            os.path.join(OUTPUT_FOLDER, f"{uuid.uuid4().hex}_merged_temp.mkv")
+        )
+
+        download_command = [
+            ffmpeg_path,
+            "-y",
+            "-protocol_whitelist",
+            "file,http,https,tcp,tls,crypto,data",
+            "-allowed_extensions",
+            "ALL",
+        ]
+
+        if start_time > 0:
+            download_command.extend(["-ss", str(start_time)])
+
+        download_command.extend(["-i", playlist_path])
+
+        if duration and duration > 0:
+            download_command.extend(["-t", str(duration)])
+
+        download_command.extend(
+            [
+                "-map",
+                "0",
+                "-dn",
+                "-c",
+                "copy",
+                "-fflags",
+                "+genpts",
+                "-avoid_negative_ts",
+                "make_zero",
+                "-f",
+                "matroska",
+                temp_mkv_path,
+            ]
+        )
+
+        print(f"Merged Playlist Download Command: {' '.join(download_command)}")
+
+        download_result = subprocess.run(download_command, capture_output=True, timeout=7200)
+        download_stderr = decode_subprocess_output(download_result.stderr)
+
+        if download_result.returncode != 0:
+            raise RuntimeError(format_ffmpeg_error(download_stderr, download_result.returncode))
+
+        if not os.path.exists(temp_mkv_path) or os.path.getsize(temp_mkv_path) == 0:
+            raise RuntimeError("통합 m3u8 다운로드 후 임시 MKV 파일이 생성되지 않았습니다.")
+
+        remux_command = [
+            ffmpeg_path,
+            "-y",
+            "-i",
+            temp_mkv_path,
+            "-map",
+            "0",
+            "-dn",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+        ]
+
+        if not playlist_uses_fmp4(playlist_content):
+            remux_command.extend(["-bsf:a", "aac_adtstoasc"])
+
+        remux_command.extend(["-f", "mp4", output_path])
+
+        print(f"Merged Playlist Remux Command: {' '.join(remux_command)}")
+
+        remux_result = subprocess.run(remux_command, capture_output=True, timeout=7200)
+        remux_stderr = decode_subprocess_output(remux_result.stderr)
+
+        if remux_result.returncode != 0:
+            raise RuntimeError(format_ffmpeg_error(remux_stderr, remux_result.returncode))
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise RuntimeError("통합 m3u8 remux 후 출력 파일이 생성되지 않았습니다.")
+
+        response = send_file(
+            output_path,
+            as_attachment=True,
+            download_name=output_filename,
+            mimetype="video/mp4",
+        )
+        response_sent = True
+        delete_file_later(output_path, delay=30)
+        return response
+
+    finally:
+        if os.path.exists(playlist_path):
+            try:
+                os.remove(playlist_path)
+            except OSError as cleanup_error:
+                print(f"임시 playlist 정리 오류: {cleanup_error}")
+        if output_path and os.path.exists(output_path) and not response_sent:
+            try:
+                os.remove(output_path)
+            except OSError as cleanup_error:
+                print(f"실패한 출력 파일 정리 오류: {cleanup_error}")
+        if temp_mkv_path and os.path.exists(temp_mkv_path):
+            try:
+                os.remove(temp_mkv_path)
+            except OSError as cleanup_error:
+                print(f"임시 MKV 정리 오류: {cleanup_error}")
+
+
 def find_available_zip_file():
     """zip_files 폴더에서 사용 가능한 ZIP 파일 찾기"""
     if not os.path.exists(ZIP_FOLDER):
@@ -319,13 +510,25 @@ def process_playlist():
         )
         title = request.form.get("title", "video")
         include_title = request.form.get("includeTitle", "false").lower() == "true"
+        requested_playlist_mode = request.form.get("playlistMode", "").strip().lower()
 
         if not playlist_file:
             return jsonify({"error": "playlist 파일이 필요합니다."}), 400
 
         # playlist 파일 내용 읽기
-        playlist_content = playlist_file.read().decode("utf-8")
+        playlist_content = playlist_file.read().decode("utf-8-sig", errors="replace")
         print(f"Playlist 내용:\n{playlist_content[:500]}...")
+        playlist_mode = (
+            requested_playlist_mode
+            if requested_playlist_mode in ("standard", "merged")
+            else detect_playlist_mode_from_content(playlist_content)
+        )
+
+        if playlist_mode == "merged":
+            print("통합 m3u8 처리 모드")
+            return process_with_uploaded_merged_playlist(
+                playlist_content, start_time, duration, title, include_title
+            )
 
         # 원본 URL 추출
         original_url = extract_original_url_from_content(playlist_content)
@@ -350,6 +553,11 @@ def process_playlist():
             print(f"처리할 URL: {original_url}")
             return process_with_original_url_fast(
                 original_url, start_time, duration, title, include_title
+            )
+        elif detect_playlist_mode_from_content(playlist_content) == "merged":
+            print("playlistMode 누락으로 판단되어 통합 m3u8 처리 모드로 전환")
+            return process_with_uploaded_merged_playlist(
+                playlist_content, start_time, duration, title, include_title
             )
         else:
             return (

@@ -19,7 +19,9 @@
    },
    "description": "Soop VOD 다운로드 및 영상 합치기 확장프로그램",
    "host_permissions": [
-      "*://*.sooplive.co.kr/*",
+      "*://sooplive.com/*",
+      "*://*.sooplive.com/*",
+      "https://docs.google.com/*",
       "https://soop.space:2083/*"
    ],
    "icons": {
@@ -35,7 +37,7 @@
       "declarativeNetRequest",
       "clipboardWrite"
    ],
-   "version": "3.4.3",
+   "version": "3.14.8",
    "web_accessible_resources": [
       {
          "matches": [
@@ -44,7 +46,7 @@
          "resources": [
             "merge.html",
             "merge.js",
-            "style.css"
+            "styles.css"
          ]
       }
    ]
