@@ -614,6 +614,17 @@ body.popup-body::after {
   min-width: 96px;
 }
 
+.download-actions .audio-button {
+  flex: 1 1 100%;
+  background: var(--accent-soft);
+  border-color: rgba(131, 242, 143, 0.28);
+  color: var(--accent);
+}
+
+.download-actions .audio-button:hover:enabled {
+  background: rgba(131, 242, 143, 0.22);
+}
+
 .part-guide {
   margin: 2px 4px 0;
   color: var(--text-muted);
