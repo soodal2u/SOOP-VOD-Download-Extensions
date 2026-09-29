@@ -22,6 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
     handleFfmpegCopy();
   });
 
+  document.getElementById('open-local-proxy').addEventListener('click', () => {
+    handleOpenLocalProxy();
+  });
+
   // 채팅 ASS 자막 다운로드
   document.getElementById('download-chat-ass').addEventListener('click', () => {
     handleChatAssDownload();
@@ -31,6 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('open-chat-settings').addEventListener('click', () => {
     handleOpenChatSettings();
   });
+
+  initPrevChatControls();
 
   // 후원 버튼
   document.getElementById('support-button').addEventListener('click', () => {
@@ -50,6 +56,13 @@ const CHAT_ASS_RESOLUTION = {
 
 const DOWNLOAD_ICON_MARKUP = '<svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const COMMAND_ICON_MARKUP = '<svg class="icon" viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3"/><path d="M16 9l4 3-4 3"/><path d="M13 6l-2 12"/></svg>';
+const PREV_CHAT_ENABLED_STORAGE_KEY = 'soop_prev_chat_enabled';
+const PREV_CHAT_MAX_MESSAGES_STORAGE_KEY = 'soop_prev_chat_max_messages';
+const PREV_CHAT_MAX_MESSAGE_OPTIONS = [80, 200, 400];
+const PREV_CHAT_DEFAULT_SETTINGS = {
+  enabled: true,
+  maxMessages: 200
+};
 const QUALITY_PREFERENCE_STORAGE_KEY = 'soop_preferred_quality';
 const PART_TIMELINE_COLORS = [
   '#83f28f',
@@ -69,6 +82,125 @@ try {
   preferredQualityPreference = String(localStorage.getItem(QUALITY_PREFERENCE_STORAGE_KEY) || '');
 } catch (error) {
   preferredQualityPreference = '';
+}
+
+function normalizePrevChatSettings(raw) {
+  const source = raw || {};
+  const enabled = source[PREV_CHAT_ENABLED_STORAGE_KEY];
+  const maxMessages = Number(source[PREV_CHAT_MAX_MESSAGES_STORAGE_KEY]);
+  return {
+    enabled: enabled === undefined || enabled === null ? PREV_CHAT_DEFAULT_SETTINGS.enabled : enabled !== false,
+    maxMessages: PREV_CHAT_MAX_MESSAGE_OPTIONS.includes(maxMessages)
+      ? maxMessages
+      : PREV_CHAT_DEFAULT_SETTINGS.maxMessages
+  };
+}
+
+function renderPrevChatControls(settings) {
+  const card = document.getElementById('prev-chat-card');
+  const enabledInput = document.getElementById('prev-chat-enabled');
+  const countLabel = document.getElementById('prev-chat-count-label');
+  const radioSlide = document.getElementById('prev-chat-radio-slide');
+  if (!card || !enabledInput || !countLabel || !radioSlide) {
+    return;
+  }
+
+  enabledInput.checked = settings.enabled !== false;
+  card.classList.toggle('is-disabled', !enabledInput.checked);
+
+  const maxMessages = PREV_CHAT_MAX_MESSAGE_OPTIONS.includes(Number(settings.maxMessages))
+    ? Number(settings.maxMessages)
+    : PREV_CHAT_DEFAULT_SETTINGS.maxMessages;
+  countLabel.textContent = `${maxMessages}개`;
+  radioSlide.dataset.index = String(PREV_CHAT_MAX_MESSAGE_OPTIONS.indexOf(maxMessages));
+  radioSlide.querySelectorAll('input[name="prev-chat-count"]').forEach((input) => {
+    input.checked = Number(input.value) === maxMessages;
+  });
+}
+
+function savePrevChatSettings(settings) {
+  const payload = {
+    [PREV_CHAT_ENABLED_STORAGE_KEY]: settings.enabled !== false,
+    [PREV_CHAT_MAX_MESSAGES_STORAGE_KEY]: PREV_CHAT_MAX_MESSAGE_OPTIONS.includes(Number(settings.maxMessages))
+      ? Number(settings.maxMessages)
+      : PREV_CHAT_DEFAULT_SETTINGS.maxMessages
+  };
+
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set(payload);
+    return;
+  }
+
+  try {
+    localStorage.setItem(PREV_CHAT_ENABLED_STORAGE_KEY, payload[PREV_CHAT_ENABLED_STORAGE_KEY] ? '1' : '0');
+    localStorage.setItem(PREV_CHAT_MAX_MESSAGES_STORAGE_KEY, String(payload[PREV_CHAT_MAX_MESSAGES_STORAGE_KEY]));
+  } catch (error) {
+    console.warn('이전 채팅 설정을 저장하지 못했습니다.', error);
+  }
+}
+
+function readPrevChatSettingsFromControls() {
+  const enabledInput = document.getElementById('prev-chat-enabled');
+  const selected = document.querySelector('input[name="prev-chat-count"]:checked');
+  const maxMessages = Number(selected && selected.value);
+  return {
+    enabled: !!(enabledInput && enabledInput.checked),
+    maxMessages: PREV_CHAT_MAX_MESSAGE_OPTIONS.includes(maxMessages)
+      ? maxMessages
+      : PREV_CHAT_DEFAULT_SETTINGS.maxMessages
+  };
+}
+
+function initPrevChatControls() {
+  const enabledInput = document.getElementById('prev-chat-enabled');
+  const radioSlide = document.getElementById('prev-chat-radio-slide');
+  if (!enabledInput || !radioSlide) {
+    return;
+  }
+
+  const applyAndSave = () => {
+    const settings = readPrevChatSettingsFromControls();
+    renderPrevChatControls(settings);
+    savePrevChatSettings(settings);
+  };
+
+  enabledInput.addEventListener('change', applyAndSave);
+  radioSlide.querySelectorAll('input[name="prev-chat-count"]').forEach((input) => {
+    input.addEventListener('change', applyAndSave);
+  });
+
+  const finish = (raw) => {
+    const settings = normalizePrevChatSettings(raw);
+    renderPrevChatControls(settings);
+    if (!raw || raw[PREV_CHAT_ENABLED_STORAGE_KEY] === undefined || raw[PREV_CHAT_MAX_MESSAGES_STORAGE_KEY] === undefined) {
+      savePrevChatSettings(settings);
+    }
+  };
+
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(
+      [PREV_CHAT_ENABLED_STORAGE_KEY, PREV_CHAT_MAX_MESSAGES_STORAGE_KEY],
+      (raw) => {
+        if (chrome.runtime.lastError) {
+          finish({});
+          return;
+        }
+        finish(raw || {});
+      }
+    );
+    return;
+  }
+
+  try {
+    const enabledRaw = localStorage.getItem(PREV_CHAT_ENABLED_STORAGE_KEY);
+    const maxRaw = localStorage.getItem(PREV_CHAT_MAX_MESSAGES_STORAGE_KEY);
+    finish({
+      [PREV_CHAT_ENABLED_STORAGE_KEY]: enabledRaw == null ? undefined : enabledRaw !== '0',
+      [PREV_CHAT_MAX_MESSAGES_STORAGE_KEY]: maxRaw == null ? undefined : Number(maxRaw)
+    });
+  } catch (error) {
+    finish({});
+  }
 }
 
 function normalizeComparableUrl(url) {
@@ -457,6 +589,45 @@ function buildClipRangeConfig(startValue, endValue) {
   return range;
 }
 
+function resolvePartClipRangeForTimeline(clipRange, timelineItem, partIndex = 0, totalParts = 1) {
+  if (!clipRange?.ok || !clipRange.active || !timelineItem || totalParts <= 1) {
+    return clipRange;
+  }
+
+  const partStart = Math.max(0, Number(timelineItem.startSeconds || 0));
+  const partEnd = Math.max(partStart, Number(timelineItem.endSeconds || 0));
+  if (!Number.isFinite(partEnd) || partEnd <= partStart) {
+    return clipRange;
+  }
+
+  const requestedStart = Math.max(0, Number(clipRange.startSeconds || 0));
+  const requestedEnd = Number.isFinite(Number(clipRange.endSeconds)) && Number(clipRange.endSeconds) > 0
+    ? Number(clipRange.endSeconds)
+    : partEnd;
+  const overlapStart = Math.max(requestedStart, partStart);
+  const overlapEnd = Math.min(requestedEnd, partEnd);
+
+  if (overlapEnd <= overlapStart) {
+    return {
+      ok: false,
+      message: `입력한 구간(${clipRange.label})은 파트 ${partIndex + 1} 범위(${formatSecondsAsFullClock(partStart)} ~ ${formatSecondsAsFullClock(partEnd)})와 겹치지 않습니다.`
+    };
+  }
+
+  const startSeconds = Math.max(0, Math.round(overlapStart - partStart));
+  const endSeconds = Math.max(startSeconds + 1, Math.round(overlapEnd - partStart));
+
+  return {
+    ...clipRange,
+    startSeconds,
+    endSeconds,
+    partAdjusted: true,
+    partOffsetSeconds: partStart,
+    originalStartSeconds: clipRange.startSeconds,
+    originalEndSeconds: clipRange.endSeconds
+  };
+}
+
 function formatClipTimeForCommand(seconds) {
   const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0));
   const hours = Math.floor(safeSeconds / 3600);
@@ -613,7 +784,7 @@ function pinMasterPlaylistToSelectedQuality(playlistContent, playlistUrl, select
     }
 
     if (!pendingInfoLine) {
-      preservedLines.push(line);
+      preservedLines.push(rewritePlaylistTagUriToAbsolute(line, playlistUrl));
     }
   }
 
@@ -632,7 +803,11 @@ function pinMasterPlaylistToSelectedQuality(playlistContent, playlistUrl, select
   });
 
   compactLines.push(replaceVariantNameAttribute(selectedEntry.infoLine, 'original'));
-  compactLines.push(selectedEntry.urlLine);
+  try {
+    compactLines.push(new URL(String(selectedEntry.urlLine || '').trim(), playlistUrl).href);
+  } catch (error) {
+    compactLines.push(selectedEntry.urlLine);
+  }
   return compactLines.join('\n');
 }
 
@@ -709,6 +884,33 @@ function rewritePlaylistTagUriToAbsolute(line, manifestUrl) {
       return `URI="${rawUrl}"`;
     }
   });
+}
+
+function isExternalAudioMasterPlaylistContent(content) {
+  const lines = String(content || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const hasExternalAudio = lines.some((line) => (
+    line.startsWith('#EXT-X-MEDIA:')
+    && /TYPE=AUDIO/i.test(line)
+    && /URI="/i.test(line)
+  ));
+  const hasAudioVariant = lines.some((line) => (
+    line.startsWith('#EXT-X-STREAM-INF:')
+    && /AUDIO="/i.test(line)
+  ));
+  return hasExternalAudio && hasAudioVariant;
+}
+
+function buildOriginalUrlPlaylistBackup(sourcePlaylistUrl, title, qualityLine) {
+  return `# Original URL: ${sourcePlaylistUrl}
+# Downloaded from: ${window.location.href}
+# Download time: ${new Date().toISOString()}
+# Title: ${title || 'Unknown'}
+${qualityLine ? `${qualityLine}\n` : ''}#EXTM3U
+# SOOP legacy external-audio master playlist
+`;
 }
 
 function parseMediaPlaylistForMerge(manifestText, manifestUrl) {
@@ -1382,6 +1584,12 @@ function renderDownloadParts(videoInfo, partItems) {
           return;
         }
 
+        const effectiveClipRange = resolvePartClipRangeForTimeline(clipRange, timelineItem, index, partItems.length);
+        if (!effectiveClipRange.ok) {
+          alert(effectiveClipRange.message);
+          return;
+        }
+
         const originalMarkup = primaryBtn.innerHTML;
         primaryBtn.disabled = true;
         primaryBtn.textContent = '패널 여는 중...';
@@ -1403,8 +1611,8 @@ function renderDownloadParts(videoInfo, partItems) {
             accessType: videoInfo?.accessType || 'subscription_plus',
             downloadLabel: '영상 다운로드',
             selectedQuality,
-            clipStartSeconds: clipRange.active ? clipRange.startSeconds : 0,
-            clipEndSeconds: clipRange.active ? clipRange.endSeconds : null,
+            clipStartSeconds: effectiveClipRange.active ? effectiveClipRange.startSeconds : 0,
+            clipEndSeconds: effectiveClipRange.active ? effectiveClipRange.endSeconds : null,
             clipLabel: clipRange.active ? clipRange.label : ''
           });
         } catch (error) {
@@ -1441,18 +1649,53 @@ function renderDownloadParts(videoInfo, partItems) {
           return;
         }
 
+        const effectiveClipRange = resolvePartClipRangeForTimeline(clipRange, timelineItem, index, partItems.length);
+        if (!effectiveClipRange.ok) {
+          alert(effectiveClipRange.message);
+          return;
+        }
+
         const selectedQuality = getCurrentQuality();
         const downloadTitle = buildClipRangeTitle(
           buildQualityTitle(fileTitle, selectedQuality, qualityOptionCount),
           clipRange
         );
-        const cmd = buildFfmpegCommand(selectedQuality?.file || part.playlistUrl, downloadTitle, clipRange);
+        const cmd = buildFfmpegCommand(selectedQuality?.file || part.playlistUrl, downloadTitle, effectiveClipRange);
         const partPrefix = partItems.length > 1 ? `[파트 ${index + 1}] ` : '';
         copyToClipboard(cmd).then(() => alert(`${partPrefix}${selectedQuality?.displayLabel || '기본 화질'} FFmpeg 명령어가 복사되었습니다!\n구간: ${clipRange.active ? clipRange.label : '전체'}`));
       }
     });
 
     actions.appendChild(cmdBtn);
+
+    if (isSubscriptionPlus) {
+      const localProxyBtn = createActionButton({
+        className: 'secondary-button command-button',
+        label: '구독+ 로컬 병합 CMD',
+        iconMarkup: COMMAND_ICON_MARKUP,
+        onClick: () => {
+          const clipRange = getCurrentClipRange();
+          if (!clipRange.ok) {
+            alert(clipRange.message);
+            return;
+          }
+
+          const selectedQuality = getCurrentQuality();
+          openLocalProxyPageForPart({
+            videoInfo,
+            partItems,
+            part,
+            index,
+            selectedQuality,
+            clipRange
+          }).catch((error) => {
+            console.error('Local proxy page open failed:', error);
+            alert(`濡쒖뺄 ?꾨줉??CMD ?섏씠吏瑜??댁? 紐삵뻽?듬땲?? ${error.message}`);
+          });
+        }
+      });
+      actions.appendChild(localProxyBtn);
+    }
 
     wrapper.appendChild(header);
     wrapper.appendChild(qualityControls);
@@ -3254,6 +3497,645 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
           : '저장 위치 선택 후 시작';
   };
 
+  const mergeServers = [
+    'https://soop.space:2083',
+    'http://127.0.0.1:2053',
+    'https://127.0.0.1:2083'
+  ];
+
+  const absolutizePlaylistUris = (manifestText, manifestUrl) => String(manifestText || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((rawLine) => {
+      const trimmedLine = rawLine.trim();
+      if (!trimmedLine) {
+        return rawLine;
+      }
+
+      if (trimmedLine.startsWith('#')) {
+        return rawLine.replace(/URI="([^"]+)"/gi, (_, rawUrl) => {
+          try {
+            return `URI="${new URL(rawUrl, manifestUrl).href}"`;
+          } catch (error) {
+            return `URI="${rawUrl}"`;
+          }
+        });
+      }
+
+      try {
+        return new URL(trimmedLine, manifestUrl).href;
+      } catch (error) {
+        return rawLine;
+      }
+    })
+    .join('\n');
+
+  const findMergeServer = async () => {
+    for (const server of mergeServers) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(`${server}/health`, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        if (response.ok) {
+          return server;
+        }
+      } catch (error) {
+        // Try the next configured merge server.
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    throw new Error('No merge server is available. Please try again later or run the local ffmpeg server.');
+  };
+
+  const buildServerClipFields = () => {
+    const startSeconds = Math.max(0, Number(job.clipStartSeconds || 0));
+    const endSeconds = Number.isFinite(Number(job.clipEndSeconds)) && Number(job.clipEndSeconds) > 0
+      ? Number(job.clipEndSeconds)
+      : null;
+
+    if (endSeconds !== null && endSeconds <= startSeconds) {
+      throw new Error('Clip end time must be greater than the start time.');
+    }
+
+    return {
+      startTime: startSeconds,
+      duration: endSeconds !== null ? Math.max(1, endSeconds - startSeconds) : null
+    };
+  };
+
+  const saveBlobDownload = (blob, filename) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    }, 500);
+  };
+
+  const readAscii = (bytes, offset, length) => {
+    let text = '';
+    for (let index = 0; index < length; index += 1) {
+      text += String.fromCharCode(bytes[offset + index]);
+    }
+    return text;
+  };
+
+  const writeUint32 = (bytes, offset, value) => {
+    bytes[offset] = (value >>> 24) & 0xff;
+    bytes[offset + 1] = (value >>> 16) & 0xff;
+    bytes[offset + 2] = (value >>> 8) & 0xff;
+    bytes[offset + 3] = value & 0xff;
+  };
+
+  const parseBoxesFrom = (bytes, start, end) => {
+    const boxes = [];
+    let offset = start;
+    while (offset + 8 <= end) {
+      let size = ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0;
+      const type = readAscii(bytes, offset + 4, 4);
+      let headerSize = 8;
+      if (size === 1) {
+        if (offset + 16 > end) {
+          break;
+        }
+        const high = ((bytes[offset + 8] << 24) | (bytes[offset + 9] << 16) | (bytes[offset + 10] << 8) | bytes[offset + 11]) >>> 0;
+        const low = ((bytes[offset + 12] << 24) | (bytes[offset + 13] << 16) | (bytes[offset + 14] << 8) | bytes[offset + 15]) >>> 0;
+        size = (high * 0x100000000) + low;
+        headerSize = 16;
+      } else if (size === 0) {
+        size = end - offset;
+      }
+
+      if (size < headerSize || offset + size > end) {
+        break;
+      }
+
+      boxes.push({
+        type,
+        offset,
+        size,
+        headerSize,
+        end: offset + size
+      });
+      offset += size;
+    }
+    return boxes;
+  };
+
+  const sliceBoxBytes = (bytes, box) => bytes.slice(box.offset, box.end);
+
+  const rewriteTkhdTrackId = (bytes, tkhdBox, trackId) => {
+    if (!tkhdBox || tkhdBox.size < 16) {
+      return;
+    }
+    const version = bytes[tkhdBox.offset + 8];
+    const trackIdOffset = tkhdBox.offset + (version === 1 ? 28 : 20);
+    if (trackIdOffset + 4 <= tkhdBox.end) {
+      writeUint32(bytes, trackIdOffset, trackId);
+    }
+  };
+
+  const rewriteTrexTrackId = (bytes, trexBox, trackId) => {
+    if (!trexBox || trexBox.size < 16) {
+      return;
+    }
+    writeUint32(bytes, trexBox.offset + 12, trackId);
+  };
+
+  const rewriteFragmentTrackId = (arrayBuffer, trackId) => {
+    const bytes = new Uint8Array(arrayBuffer.slice(0));
+    const topBoxes = parseBoxesFrom(bytes, 0, bytes.length);
+    topBoxes.forEach((box) => {
+      if (box.type !== 'moof') {
+        return;
+      }
+      const moofChildren = parseBoxesFrom(bytes, box.offset + box.headerSize, box.end);
+      moofChildren.forEach((child) => {
+        if (child.type !== 'traf') {
+          return;
+        }
+        const trafChildren = parseBoxesFrom(bytes, child.offset + child.headerSize, child.end);
+        trafChildren.forEach((grand) => {
+          if (grand.type === 'tfhd' && grand.size >= 16) {
+            writeUint32(bytes, grand.offset + 12, trackId);
+          }
+        });
+      });
+    });
+    return bytes;
+  };
+
+  const rewriteTrakTrackId = (trakBytes, trackId) => {
+    const copy = new Uint8Array(trakBytes);
+    const trakBoxes = parseBoxesFrom(copy, 0, copy.length);
+    const trakBox = trakBoxes[0];
+    if (!trakBox || trakBox.type !== 'trak') {
+      return copy;
+    }
+    const children = parseBoxesFrom(copy, trakBox.headerSize, trakBox.end);
+    children.forEach((child) => {
+      if (child.type === 'tkhd') {
+        rewriteTkhdTrackId(copy, child, trackId);
+      }
+    });
+    return copy;
+  };
+
+  const rewriteMvexTrackIds = (mvexBytes, trackIdMap) => {
+    const copy = new Uint8Array(mvexBytes);
+    const boxes = parseBoxesFrom(copy, 0, copy.length);
+    const mvexBox = boxes[0];
+    if (!mvexBox || mvexBox.type !== 'mvex') {
+      return copy;
+    }
+    const children = parseBoxesFrom(copy, mvexBox.headerSize, mvexBox.end);
+    let trexIndex = 0;
+    children.forEach((child) => {
+      if (child.type !== 'trex') {
+        return;
+      }
+      const nextTrackId = trackIdMap[trexIndex];
+      if (nextTrackId) {
+        rewriteTrexTrackId(copy, child, nextTrackId);
+      }
+      trexIndex += 1;
+    });
+    return copy;
+  };
+
+  const encodeBox = (type, payloadBytes) => {
+    const payload = payloadBytes instanceof Uint8Array ? payloadBytes : new Uint8Array(payloadBytes || []);
+    const out = new Uint8Array(8 + payload.length);
+    writeUint32(out, 0, out.length);
+    out[4] = type.charCodeAt(0);
+    out[5] = type.charCodeAt(1);
+    out[6] = type.charCodeAt(2);
+    out[7] = type.charCodeAt(3);
+    out.set(payload, 8);
+    return out;
+  };
+
+  const concatUint8Arrays = (chunks) => {
+    const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    chunks.forEach((chunk) => {
+      out.set(chunk, offset);
+      offset += chunk.length;
+    });
+    return out;
+  };
+
+  const buildCombinedFmp4Init = (videoInitBuffer, audioInitBuffer) => {
+    const videoBytes = new Uint8Array(videoInitBuffer);
+    const audioBytes = new Uint8Array(audioInitBuffer);
+    const videoBoxes = parseBoxesFrom(videoBytes, 0, videoBytes.length);
+    const audioBoxes = parseBoxesFrom(audioBytes, 0, audioBytes.length);
+    const ftyp = videoBoxes.find((box) => box.type === 'ftyp') || audioBoxes.find((box) => box.type === 'ftyp');
+    const videoMoov = videoBoxes.find((box) => box.type === 'moov');
+    const audioMoov = audioBoxes.find((box) => box.type === 'moov');
+    if (!ftyp || !videoMoov || !audioMoov) {
+      throw new Error('오디오/비디오 init 세그먼트(fMP4)를 해석하지 못했습니다.');
+    }
+
+    const videoMoovChildren = parseBoxesFrom(videoBytes, videoMoov.offset + videoMoov.headerSize, videoMoov.end);
+    const audioMoovChildren = parseBoxesFrom(audioBytes, audioMoov.offset + audioMoov.headerSize, audioMoov.end);
+    const mvhd = videoMoovChildren.find((box) => box.type === 'mvhd') || audioMoovChildren.find((box) => box.type === 'mvhd');
+    const videoTraks = videoMoovChildren.filter((box) => box.type === 'trak');
+    const audioTraks = audioMoovChildren.filter((box) => box.type === 'trak');
+    const videoMvex = videoMoovChildren.find((box) => box.type === 'mvex');
+    const audioMvex = audioMoovChildren.find((box) => box.type === 'mvex');
+    if (!mvhd || videoTraks.length === 0 || audioTraks.length === 0) {
+      throw new Error('오디오/비디오 트랙 정보를 찾지 못했습니다.');
+    }
+
+    const preparedVideoTraks = videoTraks.map((trak, index) => rewriteTrakTrackId(sliceBoxBytes(videoBytes, trak), index + 1));
+    const preparedAudioTraks = audioTraks.map((trak, index) => rewriteTrakTrackId(sliceBoxBytes(audioBytes, trak), videoTraks.length + index + 1));
+
+    let mvexBytes = null;
+    if (videoMvex && audioMvex) {
+      const videoMvexChildren = parseBoxesFrom(videoBytes, videoMvex.offset + videoMvex.headerSize, videoMvex.end);
+      const audioMvexChildren = parseBoxesFrom(audioBytes, audioMvex.offset + audioMvex.headerSize, audioMvex.end);
+      const trexPayloads = [];
+      videoMvexChildren.forEach((child, index) => {
+        if (child.type !== 'trex') {
+          return;
+        }
+        const trexCopy = sliceBoxBytes(videoBytes, child);
+        rewriteTrexTrackId(trexCopy, {
+          offset: 0,
+          size: trexCopy.length,
+          end: trexCopy.length
+        }, index + 1);
+        trexPayloads.push(trexCopy);
+      });
+      audioMvexChildren.forEach((child, index) => {
+        if (child.type !== 'trex') {
+          return;
+        }
+        const trexCopy = sliceBoxBytes(audioBytes, child);
+        rewriteTrexTrackId(trexCopy, {
+          offset: 0,
+          size: trexCopy.length,
+          end: trexCopy.length
+        }, videoTraks.length + index + 1);
+        trexPayloads.push(trexCopy);
+      });
+      const otherVideoMvex = videoMvexChildren
+        .filter((child) => child.type !== 'trex')
+        .map((child) => sliceBoxBytes(videoBytes, child));
+      mvexBytes = encodeBox('mvex', concatUint8Arrays([...otherVideoMvex, ...trexPayloads]));
+    } else if (videoMvex) {
+      mvexBytes = rewriteMvexTrackIds(sliceBoxBytes(videoBytes, videoMvex), preparedVideoTraks.map((_, index) => index + 1));
+    }
+
+    const moovPayload = concatUint8Arrays([
+      sliceBoxBytes(videoBytes, mvhd),
+      ...preparedVideoTraks,
+      ...preparedAudioTraks,
+      ...(mvexBytes ? [mvexBytes] : [])
+    ]);
+
+    return concatUint8Arrays([
+      sliceBoxBytes(videoBytes, ftyp),
+      encodeBox('moov', moovPayload)
+    ]);
+  };
+
+  const mergeFragmentedAvToMp4 = (videoInit, videoSegments, audioInit, audioSegments, videoDurations, audioDurations) => {
+    const combinedInit = buildCombinedFmp4Init(videoInit, audioInit);
+    const videoTrackId = 1;
+    const audioTrackId = 2;
+    const outputChunks = [combinedInit];
+
+    let videoIndex = 0;
+    let audioIndex = 0;
+    let videoTime = 0;
+    let audioTime = 0;
+
+    while (videoIndex < videoSegments.length || audioIndex < audioSegments.length) {
+      const preferVideo = audioIndex >= audioSegments.length
+        || (videoIndex < videoSegments.length && videoTime <= audioTime);
+
+      if (preferVideo) {
+        outputChunks.push(rewriteFragmentTrackId(videoSegments[videoIndex], videoTrackId));
+        videoTime += Math.max(0, Number(videoDurations[videoIndex] || 0));
+        videoIndex += 1;
+      } else {
+        outputChunks.push(rewriteFragmentTrackId(audioSegments[audioIndex], audioTrackId));
+        audioTime += Math.max(0, Number(audioDurations[audioIndex] || 0));
+        audioIndex += 1;
+      }
+    }
+
+    return concatUint8Arrays(outputChunks);
+  };
+
+  const downloadTrackBuffers = async ({
+    parsedManifest,
+    authContext,
+    clipRange,
+    label,
+    progressStart,
+    progressEnd,
+    signal
+  }) => {
+    if (!parsedManifest?.segments?.length) {
+      throw new Error(`${label} 세그먼트 목록이 비어 있습니다.`);
+    }
+
+    const segments = filterSegmentsByClipRange(parsedManifest.segments, clipRange);
+    if (segments.length === 0) {
+      throw new Error(`${label}에서 선택한 구간에 해당하는 세그먼트가 없습니다.`);
+    }
+
+    let initBuffer = null;
+    if (parsedManifest.initSegmentUrl) {
+      const initResponse = await fetchWithReauth(parsedManifest.initSegmentUrl, authContext, signal);
+      initBuffer = await initResponse.arrayBuffer();
+    }
+
+    const total = segments.length;
+    const buffers = new Array(total);
+    const durations = segments.map((segment) => Number(segment.duration || 0));
+    let nextIndex = 0;
+    let completed = 0;
+    const concurrency = Math.min(
+      6,
+      Math.max(2, Math.min(total, Math.floor(Number(window.navigator?.hardwareConcurrency || 8) / 2)))
+    );
+
+    const worker = async () => {
+      while (true) {
+        if (window[stateKey]?.cancelRequested) {
+          return;
+        }
+
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        if (currentIndex >= total) {
+          return;
+        }
+
+        const segment = segments[currentIndex];
+        const response = await fetchWithReauth(segment.url, authContext, signal);
+        buffers[currentIndex] = await response.arrayBuffer();
+        completed += 1;
+
+        const ratio = completed / total;
+        updateUi({
+          status: `${label} 다운로드 중... (${completed}/${total})`,
+          detail: `${formatDuration(durations.slice(0, completed).reduce((sum, value) => sum + value, 0))} 구간 수신`,
+          percent: progressStart + ((progressEnd - progressStart) * ratio),
+          running: true
+        });
+      }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    if (window[stateKey]?.cancelRequested) {
+      throw new Error('사용자가 다운로드를 취소했습니다.');
+    }
+
+    if (buffers.some((entry) => !entry)) {
+      throw new Error(`${label} 세그먼트 일부 다운로드에 실패했습니다.`);
+    }
+
+    return {
+      initBuffer,
+      segmentBuffers: buffers,
+      durations,
+      usesFragmentedMp4: Boolean(parsedManifest.usesFragmentedMp4 || parsedManifest.initSegmentUrl),
+      hasDiscontinuity: Boolean(parsedManifest.hasDiscontinuity),
+      segmentCount: total,
+      totalDuration: durations.reduce((sum, value) => sum + value, 0)
+    };
+  };
+
+  const buildPinnedExternalAudioMaster = (manifestText, manifestUrl, chosenVariant, audioEntry) => {
+    const lines = String(manifestText || '').replace(/\r/g, '').split('\n');
+    const output = ['#EXTM3U'];
+    const qualityLine = job.selectedQuality?.displayLabel || chosenVariant?.infoLine || '';
+    if (qualityLine) {
+      output.push(`# Quality: ${job.selectedQuality?.displayLabel || 'selected'}`);
+    }
+
+    lines.forEach((rawLine) => {
+      const line = String(rawLine || '').trim();
+      if (!line || line === '#EXTM3U') {
+        return;
+      }
+      if (line.startsWith('#EXT-X-STREAM-INF:')) {
+        return;
+      }
+      if (line.startsWith('#EXT-X-MEDIA:')) {
+        output.push(rawLine.replace(/URI="([^"]+)"/gi, (_, rawUrl) => {
+          try {
+            return `URI="${new URL(rawUrl, manifestUrl).href}"`;
+          } catch (error) {
+            return `URI="${rawUrl}"`;
+          }
+        }));
+      }
+    });
+
+    const streamInfo = String(chosenVariant?.infoLine || '#EXT-X-STREAM-INF:BANDWIDTH=1').trim();
+    output.push(streamInfo.includes('AUDIO=') || !audioEntry?.groupId
+      ? streamInfo
+      : `${streamInfo},AUDIO="${audioEntry.groupId}"`);
+    output.push(chosenVariant.url);
+    if (audioEntry?.uri) {
+      // Ensure default audio URI remains absolute even if MEDIA tag rewrite missed it.
+      output.push(`# Audio URI: ${audioEntry.uri}`);
+    }
+    return `${output.join('\n')}\n`;
+  };
+
+  const processExternalAudioMasterWithServer = async (manifestText, manifestUrl, chosenVariant, audioEntry) => {
+    if (job.accessType === 'subscription_plus') {
+      throw new Error('subscription_plus_requires_browser_av_merge');
+    }
+
+    const server = await findMergeServer();
+    const clipFields = buildServerClipFields();
+    const pinnedMaster = buildPinnedExternalAudioMaster(manifestText, manifestUrl, chosenVariant, audioEntry);
+    const playlistText = [
+      `# Original URL: ${manifestUrl}`,
+      `# Quality: ${job.selectedQuality?.displayLabel || ''}`.trim(),
+      pinnedMaster.trim()
+    ].filter(Boolean).join('\n') + '\n';
+    const safeTitle = sanitizeFileName(job.title);
+    const playlistBlob = new Blob([playlistText], {
+      type: 'application/vnd.apple.mpegurl;charset=utf-8'
+    });
+    const formData = new FormData();
+
+    formData.append('playlistFile', playlistBlob, `${safeTitle}_playlist.m3u8`);
+    formData.append('startTime', String(clipFields.startTime));
+    if (clipFields.duration !== null) {
+      formData.append('duration', String(clipFields.duration));
+    }
+    formData.append('title', safeTitle);
+    formData.append('includeTitle', 'true');
+    formData.append('playlistMode', 'merged');
+
+    updateUi({
+      status: '분리된 오디오/비디오를 서버에서 합치는 중...',
+      detail: `${job.selectedQuality?.displayLabel || '선택 화질'} · ${server}`,
+      percent: 20,
+      running: true
+    });
+
+    const response = await fetch(`${server}/process-playlist`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.clone().json().catch(() => null);
+      const errorText = errorPayload?.error || await response.text().catch(() => '');
+      throw new Error(errorText || `Merge server failed (${response.status})`);
+    }
+
+    const outputBlob = await response.blob();
+    saveBlobDownload(outputBlob, `${safeTitle}.mp4`);
+    return {
+      server,
+      bytes: outputBlob.size
+    };
+  };
+
+  const requestMp4SaveHandle = async () => {
+    const suggestedName = `${sanitizeFileName(job.title)}.mp4`;
+    return window.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: 'MP4 Video',
+          accept: {
+            'video/mp4': ['.mp4']
+          }
+        }
+      ]
+    });
+  };
+
+  const saveDualTrackDirectDownload = async ({
+    videoTrack,
+    audioTrack,
+    selectedQuality,
+    fileHandle
+  }) => {
+    if (videoTrack.hasDiscontinuity || audioTrack.hasDiscontinuity) {
+      throw new Error('이 영상은 세그먼트 타임스탬프가 중간에 끊깁니다. 브라우저 직접 저장은 싱크가 밀릴 수 있어 중단했습니다. M3U8 백업 또는 ffmpeg CMD로 저장해주세요.');
+    }
+
+    if (!videoTrack.usesFragmentedMp4 || !audioTrack.usesFragmentedMp4 || !videoTrack.initBuffer || !audioTrack.initBuffer) {
+      throw new Error('분리 오디오 스트림이 fMP4 형식이 아니라 브라우저 직접 병합을 할 수 없습니다. ffmpeg CMD 또는 로컬 프록시를 사용해주세요.');
+    }
+
+    updateUi({
+      status: '오디오/비디오 트랙을 하나의 MP4로 합치는 중...',
+      detail: `${selectedQuality?.displayLabel || '선택 화질'} · 영상 ${videoTrack.segmentCount}개 + 오디오 ${audioTrack.segmentCount}개`,
+      percent: 92,
+      running: true
+    });
+
+    const mergedBytes = mergeFragmentedAvToMp4(
+      videoTrack.initBuffer,
+      videoTrack.segmentBuffers,
+      audioTrack.initBuffer,
+      audioTrack.segmentBuffers,
+      videoTrack.durations,
+      audioTrack.durations
+    );
+
+    const writableHandle = fileHandle || await requestMp4SaveHandle();
+    const writableStream = await writableHandle.createWritable();
+    await writableStream.write(mergedBytes);
+    await writableStream.close();
+
+    return {
+      bytes: mergedBytes.length,
+      detailLabel: 'fMP4 A/V'
+    };
+  };
+
+  const resolveExternalAudioEntry = (parsedManifest, chosenVariant) => {
+    if (!chosenVariant) {
+      return null;
+    }
+
+    const audioEntries = chosenVariant.audioGroupId
+      ? (parsedManifest.audioGroups.get(chosenVariant.audioGroupId) || [])
+      : [];
+    const groupedEntry = audioEntries.find((entry) => entry.isDefault && entry.uri) || audioEntries.find((entry) => entry.uri);
+    if (groupedEntry?.uri) {
+      return groupedEntry;
+    }
+
+    // Some masters declare MEDIA audio without matching AUDIO= on every variant.
+    for (const entries of parsedManifest.audioGroups.values()) {
+      const fallbackEntry = entries.find((entry) => entry.isDefault && entry.uri) || entries.find((entry) => entry.uri);
+      if (fallbackEntry?.uri) {
+        return fallbackEntry;
+      }
+    }
+    return null;
+  };
+
+  const loadManifestPairForQuality = async (sourceManifestUrl, selectedQuality, baseAuthContext, signal) => {
+    const authContext = {
+      ...baseAuthContext,
+      manifestUrl: sourceManifestUrl
+    };
+    const manifestResponse = await fetchManifestWithOptionalAuth(authContext, signal);
+    const manifestText = await manifestResponse.text();
+    const parsedManifest = parseM3u8(manifestText, sourceManifestUrl);
+
+    if (parsedManifest.variants.length === 0) {
+      return {
+        kind: 'media',
+        manifestUrl: sourceManifestUrl,
+        authContext,
+        parsedManifest,
+        manifestText,
+        chosenVariant: null,
+        audioEntry: null
+      };
+    }
+
+    const chosenVariant = chooseVariantForQuality(parsedManifest.variants, selectedQuality);
+    if (!chosenVariant?.url) {
+      throw new Error('선택한 화질의 재생 목록을 찾지 못했습니다.');
+    }
+
+    const audioEntry = resolveExternalAudioEntry(parsedManifest, chosenVariant);
+    return {
+      kind: 'master',
+      manifestUrl: sourceManifestUrl,
+      authContext,
+      parsedManifest,
+      manifestText,
+      chosenVariant,
+      audioEntry
+    };
+  };
+
   const cleanupOverlay = () => {
     if (window[stateKey]?.busy) {
       return;
@@ -3320,13 +4202,6 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
         : job.selectedQuality?.file
           ? normalizeQualityOption(job.selectedQuality, { file: job.selectedQuality.file })
           : null;
-      const manifestUrls = job.playlistUrls.length > 0 && !job.selectedQuality?.file
-        ? job.playlistUrls
-        : [job.selectedQuality?.file || selectedQuality?.file || job.playlistUrl || fileInfo?.file].filter(Boolean);
-
-      if (manifestUrls.length === 0) {
-        throw new Error('재생용 m3u8 주소를 찾을 수 없습니다.');
-      }
 
       const baseAuthContext = {
         bjId: job.bjId || videoData.bj_id || videoData.writer_id || '',
@@ -3337,10 +4212,172 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
         throw new Error('BJ 식별자를 찾을 수 없습니다.');
       }
 
+      // Prefer master playlist first so lower qualities (720p etc.) can keep linked audio tracks.
+      const candidateManifestUrls = [
+        fileInfo?.file,
+        job.playlistUrl,
+        ...(Array.isArray(job.playlistUrls) ? job.playlistUrls : []),
+        selectedQuality?.file,
+        job.selectedQuality?.file
+      ]
+        .map((url) => normalizeComparableUrl(url))
+        .filter(Boolean)
+        .filter((url, index, list) => list.indexOf(url) === index);
+
+      if (candidateManifestUrls.length === 0) {
+        throw new Error('재생용 m3u8 주소를 찾을 수 없습니다.');
+      }
+
+      let resolvedMaster = null;
+      let resolvedMedia = null;
+      for (const candidateUrl of candidateManifestUrls) {
+        const loaded = await loadManifestPairForQuality(candidateUrl, selectedQuality, baseAuthContext, signal);
+        if (loaded.kind === 'master') {
+          resolvedMaster = loaded;
+          break;
+        }
+        if (!resolvedMedia) {
+          resolvedMedia = loaded;
+        }
+      }
+
+      const qualitySummary = selectedQuality?.displayLabel || [
+        selectedQuality?.label || '',
+        selectedQuality?.resolution || '',
+        selectedQuality?.bitrate || ''
+      ].filter(Boolean).join(' / ');
+
+      // Path A: master playlist with externally linked audio (common for 720p and below).
+      if (resolvedMaster?.chosenVariant && resolvedMaster.audioEntry?.uri) {
+        updateUi({
+          status: '선택 화질 영상/오디오 트랙을 준비하는 중...',
+          detail: `${qualitySummary || '기본 화질'} · 분리 오디오 감지`,
+          percent: 6,
+          running: true
+        });
+
+        // Prefer pure browser direct-save for quality-accurate A/V merge (works with cookies/auth).
+        try {
+          const dualFileHandle = await requestMp4SaveHandle();
+
+          const videoAuthContext = {
+            ...baseAuthContext,
+            manifestUrl: resolvedMaster.chosenVariant.url
+          };
+          const audioAuthContext = {
+            ...baseAuthContext,
+            manifestUrl: resolvedMaster.audioEntry.uri
+          };
+
+          const videoManifestResponse = await fetchManifestWithOptionalAuth(videoAuthContext, signal);
+          const videoManifestText = await videoManifestResponse.text();
+          const videoParsed = parseM3u8(videoManifestText, resolvedMaster.chosenVariant.url);
+          if (videoParsed.segments.length === 0) {
+            throw new Error('선택 화질 영상 세그먼트를 찾지 못했습니다.');
+          }
+
+          const audioManifestResponse = await fetchManifestWithOptionalAuth(audioAuthContext, signal);
+          const audioManifestText = await audioManifestResponse.text();
+          const audioParsed = parseM3u8(audioManifestText, resolvedMaster.audioEntry.uri);
+          if (audioParsed.segments.length === 0) {
+            throw new Error('연결 오디오 세그먼트를 찾지 못했습니다.');
+          }
+
+          const sourceDuration = videoParsed.segments.reduce((sum, segment) => sum + (Number(segment.duration || 0)), 0);
+          const clipRange = resolveClipRangeForDuration(sourceDuration);
+
+          const videoTrack = await downloadTrackBuffers({
+            parsedManifest: videoParsed,
+            authContext: videoAuthContext,
+            clipRange,
+            label: '영상 트랙',
+            progressStart: 8,
+            progressEnd: 48,
+            signal
+          });
+          const audioTrack = await downloadTrackBuffers({
+            parsedManifest: audioParsed,
+            authContext: audioAuthContext,
+            clipRange,
+            label: '오디오 트랙',
+            progressStart: 48,
+            progressEnd: 88,
+            signal
+          });
+
+          const mergeResult = await saveDualTrackDirectDownload({
+            videoTrack,
+            audioTrack,
+            selectedQuality,
+            fileHandle: dualFileHandle
+          });
+
+          window[stateKey] = {
+            busy: false,
+            cancelRequested: false,
+            overlay
+          };
+          updateUi({
+            status: `${job.downloadLabel}가 완료되었습니다.`,
+            detail: `${qualitySummary || '선택 화질'} · ${mergeResult.detailLabel} · ${formatBytes(mergeResult.bytes)} 저장 완료`,
+            percent: 100,
+            finished: true
+          });
+          return;
+        } catch (dualTrackError) {
+          const dualMessage = String(dualTrackError?.message || '');
+          const userCancelled = Boolean(window[stateKey]?.cancelRequested)
+            || dualTrackError?.name === 'AbortError'
+            || /cancel|abort|사용자가 다운로드를 취소/i.test(dualMessage);
+          if (userCancelled) {
+            throw dualTrackError;
+          }
+
+          // Fallback: remote/local merge server with quality-pinned master playlist.
+          try {
+            const mergeResult = await processExternalAudioMasterWithServer(
+              resolvedMaster.manifestText,
+              resolvedMaster.manifestUrl,
+              resolvedMaster.chosenVariant,
+              resolvedMaster.audioEntry
+            );
+            window[stateKey] = {
+              busy: false,
+              cancelRequested: false,
+              overlay
+            };
+            updateUi({
+              status: `${job.downloadLabel}가 완료되었습니다.`,
+              detail: `${qualitySummary || '선택 화질'} · 서버 병합 · ${formatBytes(mergeResult.bytes)} - ${mergeResult.server}`,
+              percent: 100,
+              finished: true
+            });
+            return;
+          } catch (serverError) {
+            const dualMessage = dualTrackError?.message || '브라우저 A/V 병합 실패';
+            const serverMessage = serverError?.message || '서버 병합 실패';
+            if (serverMessage === 'subscription_plus_requires_browser_av_merge') {
+              throw new Error(`${dualMessage} (구독플러스는 브라우저 직접 병합이 필요합니다)`);
+            }
+            throw new Error(`${dualMessage} / ${serverMessage}`);
+          }
+        }
+      }
+
+      // Path B: single muxed stream (original or non-separated variants).
       const parsedParts = [];
       let initSegmentContext = null;
+      const mediaSourceList = [];
 
-      for (const sourceManifestUrl of manifestUrls) {
+      if (resolvedMaster?.chosenVariant?.url) {
+        mediaSourceList.push(resolvedMaster.chosenVariant.url);
+      } else if (resolvedMedia?.manifestUrl) {
+        mediaSourceList.push(resolvedMedia.manifestUrl);
+      } else {
+        mediaSourceList.push(...candidateManifestUrls);
+      }
+
+      for (const sourceManifestUrl of mediaSourceList) {
         let manifestUrl = sourceManifestUrl;
         const authContext = {
           ...baseAuthContext,
@@ -3357,12 +4394,60 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
             throw new Error('선택한 화질의 재생 목록을 찾지 못했습니다.');
           }
 
-          const audioEntries = chosenVariant?.audioGroupId
-            ? (parsedManifest.audioGroups.get(chosenVariant.audioGroupId) || [])
-            : [];
-          const externalAudioEntry = audioEntries.find((entry) => entry.isDefault && entry.uri) || audioEntries.find((entry) => entry.uri);
-          if (externalAudioEntry?.uri) {
-            throw new Error('이 영상은 오디오가 별도 트랙으로 제공됩니다. 브라우저 직접 저장은 무음 파일이 될 수 있어 중단했습니다. M3U8 백업 또는 ffmpeg CMD로 저장해주세요.');
+          const audioEntry = resolveExternalAudioEntry(parsedManifest, chosenVariant);
+          if (audioEntry?.uri) {
+            // Late-detected separated audio: handle here instead of silently saving video-only.
+            const dualFileHandle = await requestMp4SaveHandle();
+            const videoAuthContext = {
+              ...baseAuthContext,
+              manifestUrl: chosenVariant.url
+            };
+            const audioAuthContext = {
+              ...baseAuthContext,
+              manifestUrl: audioEntry.uri
+            };
+            const videoManifestResponse = await fetchManifestWithOptionalAuth(videoAuthContext, signal);
+            const videoParsed = parseM3u8(await videoManifestResponse.text(), chosenVariant.url);
+            const audioManifestResponse = await fetchManifestWithOptionalAuth(audioAuthContext, signal);
+            const audioParsed = parseM3u8(await audioManifestResponse.text(), audioEntry.uri);
+            const dualSourceDuration = videoParsed.segments.reduce((sum, segment) => sum + (Number(segment.duration || 0)), 0);
+            const dualClipRange = resolveClipRangeForDuration(dualSourceDuration);
+            const videoTrack = await downloadTrackBuffers({
+              parsedManifest: videoParsed,
+              authContext: videoAuthContext,
+              clipRange: dualClipRange,
+              label: '영상 트랙',
+              progressStart: 8,
+              progressEnd: 48,
+              signal
+            });
+            const audioTrack = await downloadTrackBuffers({
+              parsedManifest: audioParsed,
+              authContext: audioAuthContext,
+              clipRange: dualClipRange,
+              label: '오디오 트랙',
+              progressStart: 48,
+              progressEnd: 88,
+              signal
+            });
+            const mergeResult = await saveDualTrackDirectDownload({
+              videoTrack,
+              audioTrack,
+              selectedQuality,
+              fileHandle: dualFileHandle
+            });
+            window[stateKey] = {
+              busy: false,
+              cancelRequested: false,
+              overlay
+            };
+            updateUi({
+              status: `${job.downloadLabel}가 완료되었습니다.`,
+              detail: `${qualitySummary || '선택 화질'} · ${mergeResult.detailLabel} · ${formatBytes(mergeResult.bytes)} 저장 완료`,
+              percent: 100,
+              finished: true
+            });
+            return;
           }
 
           manifestUrl = chosenVariant.url;
@@ -3447,12 +4532,6 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
       });
 
       writable = await fileHandle.createWritable();
-
-      const qualitySummary = selectedQuality?.displayLabel || [
-        selectedQuality?.label || '',
-        selectedQuality?.resolution || '',
-        selectedQuality?.bitrate || ''
-      ].filter(Boolean).join(' / ');
 
       updateUi({
         status: '다운로드를 시작합니다...',
@@ -3548,10 +4627,10 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
         });
       } else {
         updateUi({
-        status: `${job.downloadLabel}가 완료되었습니다.`,
-        detail: `${formatBytes(writtenBytes)} 저장 완료`,
-        percent: 100,
-        finished: true
+          status: `${job.downloadLabel}가 완료되었습니다.`,
+          detail: `${qualitySummary || '기본 화질'} · ${formatBytes(writtenBytes)} 저장 완료`,
+          percent: 100,
+          finished: true
         });
       }
     } catch (error) {
@@ -3642,6 +4721,111 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
   };
 }
 
+function buildSooopReferer(videoInfo = latestVideoInfo) {
+  const pageUrl = String(videoInfo?.pageUrl || '').trim();
+  if (pageUrl) {
+    return pageUrl;
+  }
+
+  const titleNo = String(videoInfo?.titleNo || '').trim();
+  return titleNo ? `https://vod.sooplive.com/player/${titleNo}` : 'https://vod.sooplive.com/';
+}
+
+function createLocalProxyJobId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getActiveBrowserTab() {
+  return new Promise((resolve) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      resolve(Array.isArray(tabs) && tabs.length > 0 ? tabs[0] : null);
+    });
+  });
+}
+
+async function openLocalProxyPageForPart({ videoInfo, partItems, part, index, selectedQuality, clipRange }) {
+  const safePartItems = Array.isArray(partItems) && partItems.length > 0 ? partItems : [part].filter(Boolean);
+  const partIndex = Math.max(0, Number(index || 0));
+  const targetPart = part || safePartItems[partIndex] || safePartItems[0] || null;
+  if (!videoInfo || !targetPart?.playlistUrl) {
+    throw new Error('playlist.m3u8 URL을 찾지 못했습니다.');
+  }
+
+  const timelineItems = buildPartTimelineItems(safePartItems, videoInfo);
+  const timelineItem = timelineItems.find((item) => item.index === partIndex) || timelineItems[partIndex] || null;
+  const effectiveClipRange = resolvePartClipRangeForTimeline(clipRange, timelineItem, partIndex, safePartItems.length);
+  if (!effectiveClipRange.ok) {
+    throw new Error(effectiveClipRange.message);
+  }
+
+  const baseTitle = buildPartDisplayTitle(videoInfo?.title || 'SOOP_VOD', partIndex, safePartItems.length);
+  const title = buildClipRangeTitle(
+    buildQualityTitle(baseTitle, selectedQuality, selectedQuality ? 2 : 0),
+    clipRange
+  );
+  const params = new URLSearchParams({
+    jobId: createLocalProxyJobId(),
+    title,
+    playlistUrl: targetPart.playlistUrl || selectedQuality?.file || '',
+    selectedQualityFile: selectedQuality?.file || '',
+    qualityLabel: selectedQuality?.displayLabel || '',
+    titleNo: videoInfo?.titleNo || '',
+    bjId: videoInfo?.bjId || '',
+    pageUrl: buildSooopReferer(videoInfo),
+    clipStart: effectiveClipRange?.active ? String(effectiveClipRange.startSeconds || 0) : '0',
+    clipEnd: effectiveClipRange?.active && Number.isFinite(Number(effectiveClipRange.endSeconds)) ? String(effectiveClipRange.endSeconds) : ''
+  });
+
+  const sourceTab = await getActiveBrowserTab();
+  if (sourceTab?.id != null) {
+    params.set('sourceTabId', String(sourceTab.id));
+  }
+  if (sourceTab?.url) {
+    params.set('sourceUrl', sourceTab.url);
+  }
+
+  chrome.tabs.create({ url: chrome.runtime.getURL(`local-proxy.html?${params.toString()}`) });
+}
+
+async function handleOpenLocalProxy() {
+  try {
+    const videoInfo = latestVideoInfo || await executeInActiveTab(extractVideoInfo);
+    if (!videoInfo || videoInfo?.error) {
+      throw new Error(videoInfo?.error || '영상 정보를 찾지 못했습니다.');
+    }
+
+    const partItems = latestPartItems.length > 0 ? latestPartItems : extractDownloadParts(videoInfo);
+    const firstPart = partItems[0] || null;
+    if (!firstPart?.playlistUrl) {
+      throw new Error('playlist.m3u8 URL을 찾지 못했습니다.');
+    }
+
+    const { qualityOptions } = getPartQualityOptions(videoInfo, firstPart, 0);
+    const qualitySelect = document.querySelector('.quality-select[data-part-index="0"]');
+    const clipStartInput = document.querySelector('.clip-start-input[data-part-index="0"]');
+    const clipEndInput = document.querySelector('.clip-end-input[data-part-index="0"]');
+    const selectedQuality = getSelectedQualityOption(qualitySelect, qualityOptions) || qualityOptions[0] || null;
+    const clipRange = buildClipRangeConfig(clipStartInput?.value, clipEndInput?.value);
+
+    if (!clipRange.ok) {
+      alert(clipRange.message);
+      return;
+    }
+
+    await openLocalProxyPageForPart({
+      videoInfo,
+      partItems,
+      part: firstPart,
+      index: 0,
+      selectedQuality,
+      clipRange
+    });
+  } catch (error) {
+    console.error('Local proxy page open failed:', error);
+    alert(`로컬 프록시 CMD 페이지를 열지 못했습니다: ${error.message}`);
+  }
+}
+
 function handleFfmpegCopy() {
   const btn = document.getElementById('copy-ffmpeg');
   btn.disabled = true;
@@ -3662,10 +4846,19 @@ function handleFfmpegCopy() {
       return;
     }
 
+    const timelineItems = buildPartTimelineItems(latestPartItems, latestVideoInfo);
+    const timelineItem = timelineItems.find((item) => item.index === 0) || timelineItems[0] || null;
+    const effectiveClipRange = resolvePartClipRangeForTimeline(clipRange, timelineItem, 0, latestPartItems.length);
+    if (!effectiveClipRange.ok) {
+      alert(effectiveClipRange.message);
+      btn.disabled = false;
+      return;
+    }
+
     if (playlistUrl) {
       const baseTitle = buildPartDisplayTitle(latestVideoInfo?.title || '현재 영상', 0, latestPartItems.length);
       const outputTitle = buildClipRangeTitle(buildQualityTitle(baseTitle, selectedQuality, qualityOptions.length), clipRange);
-      const cmd = buildFfmpegCommand(playlistUrl, outputTitle, clipRange);
+      const cmd = buildFfmpegCommand(playlistUrl, outputTitle, effectiveClipRange);
 
       copyToClipboard(cmd)
         .then(() => {
@@ -4454,7 +5647,9 @@ async function downloadPlaylistFile(playlistUrl, title, selectedQuality = null) 
     playlistContent = pinMasterPlaylistToSelectedQuality(playlistContent, sourcePlaylistUrl, selectedQuality);
     const qualityLine = selectedQuality?.displayLabel ? `# Quality: ${selectedQuality.displayLabel}` : '';
 
-    const enhancedContent = `# Original URL: ${sourcePlaylistUrl}
+    const enhancedContent = isExternalAudioMasterPlaylistContent(playlistContent)
+      ? buildOriginalUrlPlaylistBackup(sourcePlaylistUrl, title, qualityLine)
+      : `# Original URL: ${sourcePlaylistUrl}
 # Downloaded from: ${window.location.href}
 # Download time: ${new Date().toISOString()}
 # Title: ${title || 'Unknown'}

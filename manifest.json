@@ -8,6 +8,30 @@
    "content_security_policy": {
       "extension_pages": "script-src 'self'; object-src 'self'"
    },
+   "content_scripts": [
+      {
+         "matches": [
+            "*://vod.sooplive.com/player/*",
+            "*://vod.sooplive.co.kr/player/*"
+         ],
+         "js": [
+            "prev-chat-bridge.js"
+         ],
+         "run_at": "document_idle",
+         "world": "ISOLATED"
+      },
+      {
+         "matches": [
+            "*://vod.sooplive.com/player/*",
+            "*://vod.sooplive.co.kr/player/*"
+         ],
+         "js": [
+            "prev-chat.js"
+         ],
+         "run_at": "document_idle",
+         "world": "MAIN"
+      }
+   ],
    "declarative_net_request": {
       "rule_resources": [
          {
@@ -21,8 +45,11 @@
    "host_permissions": [
       "*://sooplive.com/*",
       "*://*.sooplive.com/*",
+      "*://sooplive.co.kr/*",
+      "*://*.sooplive.co.kr/*",
       "https://docs.google.com/*",
-      "https://soop.space:2083/*"
+      "https://soop.space:2083/*",
+      "http://127.0.0.1:18787/*"
    ],
    "icons": {
       "128": "icons/128.png",
@@ -35,9 +62,10 @@
       "scripting",
       "activeTab",
       "declarativeNetRequest",
-      "clipboardWrite"
+      "clipboardWrite",
+      "storage"
    ],
-   "version": "3.14.8",
+   "version": "3.16.18",
    "web_accessible_resources": [
       {
          "matches": [

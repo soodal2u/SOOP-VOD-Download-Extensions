@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SOOP 다시보기 다운로드</title>
-  <link rel="stylesheet" href="popup.css?v=3.14.8">
+  <link rel="stylesheet" href="popup.css?v=3.16.17">
 </head>
 
 <body class="popup-body">
@@ -66,7 +66,7 @@
             <p class="section-eyebrow">도구</p>
             <h2>작업 도구</h2>
           </div>
-          <p class="section-caption">채팅 ASS, 정밀 스캔, ffmpeg, 병합 페이지를 빠르게 엽니다.</p>
+          <p class="section-caption">이전 채팅, ASS, 스캔, ffmpeg, 병합을 한곳에서 다룹니다.</p>
         </div>
 
         <div class="chat-actions">
@@ -93,6 +93,43 @@
             </span>
           </button>
         </div>
+
+        <section class="prev-chat-card" id="prev-chat-card" aria-labelledby="prev-chat-title">
+          <div class="prev-chat-top">
+            <div class="prev-chat-copy">
+              <p class="prev-chat-eyebrow">다시보기 채팅</p>
+              <h3 id="prev-chat-title" class="prev-chat-title">이전 채팅 불러오기</h3>
+              <p class="prev-chat-note">시크하면 채팅창을 이전 메시지로 채웁니다.</p>
+            </div>
+            <label class="prev-chat-switch" title="이전 채팅 불러오기">
+              <input id="prev-chat-enabled" type="checkbox" checked>
+              <span class="prev-chat-switch-track" aria-hidden="true"></span>
+              <span class="visually-hidden">이전 채팅 불러오기 사용</span>
+            </label>
+          </div>
+
+          <div class="prev-chat-count" id="prev-chat-count-wrap">
+            <div class="prev-chat-count-head">
+              <span>불러올 개수</span>
+              <strong id="prev-chat-count-label">200개</strong>
+            </div>
+            <div class="prev-chat-radio-slide" id="prev-chat-radio-slide" data-index="1" role="radiogroup" aria-label="이전 채팅 개수">
+              <div class="prev-chat-radio-thumb" aria-hidden="true"></div>
+              <label>
+                <input type="radio" name="prev-chat-count" value="80">
+                <span>80</span>
+              </label>
+              <label>
+                <input type="radio" name="prev-chat-count" value="200" checked>
+                <span>200</span>
+              </label>
+              <label>
+                <input type="radio" name="prev-chat-count" value="400">
+                <span>400</span>
+              </label>
+            </div>
+          </div>
+        </section>
 
         <div class="tool-grid">
           <button id="auto-scan" class="secondary-button tool-button" type="button">
@@ -125,6 +162,13 @@
             <span class="button-copy">
               <span class="button-label">로컬 ffmpeg CMD</span>
               <span class="button-note">현재 영상 명령어 복사</span>
+            </span>
+          </button>
+
+          <button id="open-local-proxy" class="secondary-button tool-button" type="button">
+            <span class="button-copy">
+              <span class="button-label">구독+ 로컬 병합 CMD</span>
+              <span class="button-note">403 인증 갱신 ffmpeg 저장</span>
             </span>
           </button>
 
@@ -170,8 +214,8 @@
     </main>
   </div>
 
-  <script src="chat-ass-config.js?v=3.14.8"></script>
-  <script src="popup.js?v=3.14.8"></script>
+  <script src="chat-ass-config.js?v=3.16.14"></script>
+  <script src="popup.js?v=3.16.17"></script>
 </body>
 
 </html>

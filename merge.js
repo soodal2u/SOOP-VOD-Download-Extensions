@@ -593,11 +593,28 @@ function extractTitleFromPlaylist(filename) {
   return filename.replace('_playlist.m3u8', '').replace('.m3u8', '').trim();
 }
 
+function isExternalAudioMasterPlaylist(lines) {
+  const hasExternalAudio = lines.some((line) => (
+    line.startsWith('#EXT-X-MEDIA:')
+    && /TYPE=AUDIO/i.test(line)
+    && /URI="/i.test(line)
+  ));
+  const hasAudioVariant = lines.some((line) => (
+    line.startsWith('#EXT-X-STREAM-INF:')
+    && /AUDIO="/i.test(line)
+  ));
+  return hasExternalAudio && hasAudioVariant;
+}
+
 function detectPlaylistModeFromContent(content) {
   const lines = String(content || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+
+  if (isExternalAudioMasterPlaylist(lines)) {
+    return 'merged';
+  }
 
   if (lines.some((line) => line.startsWith('# Original URL:'))) {
     return 'standard';
@@ -614,11 +631,27 @@ function detectPlaylistModeFromContent(content) {
 async function processPlaylistFile(playlistFile, startTime, duration, includeTitle, options = {}) {
   const formData = new FormData();
   const title = extractTitleFromPlaylist(playlistFile.name);
-  const playlistContent = await playlistFile.text();
-  const playlistMode = detectPlaylistModeFromContent(playlistContent);
+  let playlistContent = await playlistFile.text();
+  let playlistMode = detectPlaylistModeFromContent(playlistContent);
+  const originalUrlLine = playlistContent
+    .split(/\r?\n/)
+    .find((line) => line.trim().startsWith('# Original URL:'));
+
+  if (playlistMode === 'merged' && originalUrlLine) {
+    playlistContent = [
+      originalUrlLine.trim(),
+      '#EXTM3U',
+      '# SOOP legacy external-audio master playlist'
+    ].join('\n') + '\n';
+    playlistMode = 'standard';
+  }
+
+  const uploadPlaylist = new Blob([playlistContent], {
+    type: 'application/vnd.apple.mpegurl;charset=utf-8'
+  });
   const resolvedIncludeTitle = includeTitle || Boolean(options.forceTitle);
 
-  formData.append('playlistFile', playlistFile);
+  formData.append('playlistFile', uploadPlaylist, playlistFile.name);
   formData.append('startTime', startTime.toString());
   if (duration !== null) {
     formData.append('duration', duration.toString());
