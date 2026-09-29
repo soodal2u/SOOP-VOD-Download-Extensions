@@ -56,6 +56,7 @@ const CHAT_ASS_RESOLUTION = {
 
 const DOWNLOAD_ICON_MARKUP = '<svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const COMMAND_ICON_MARKUP = '<svg class="icon" viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3"/><path d="M16 9l4 3-4 3"/><path d="M13 6l-2 12"/></svg>';
+const AUDIO_ICON_MARKUP = '<svg class="icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/><path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>';
 const PREV_CHAT_ENABLED_STORAGE_KEY = 'soop_prev_chat_enabled';
 const PREV_CHAT_MAX_MESSAGES_STORAGE_KEY = 'soop_prev_chat_max_messages';
 const PREV_CHAT_MAX_MESSAGE_OPTIONS = [80, 200, 400];
@@ -346,6 +347,14 @@ function buildQualityOptions(fileInfo, fallbackPlaylistUrl = '') {
   }
 
   return normalizedOptions.sort((left, right) => scoreQualityOption(right) - scoreQualityOption(left));
+}
+
+// SOOP muxes the same AAC track into every quality, so the lightest stream gives identical audio.
+function pickAudioSourceQuality(qualityOptions) {
+  const candidates = (qualityOptions || []).filter((option) => (
+    option?.file && !/adaptive/i.test(String(option.name || ''))
+  ));
+  return [...candidates].sort((left, right) => scoreQualityOption(left) - scoreQualityOption(right))[0] || null;
 }
 
 function collectFileInfoKeys(fileInfo) {
@@ -1573,58 +1582,73 @@ function renderDownloadParts(videoInfo, partItems) {
     const actions = document.createElement('div');
     actions.className = 'download-actions';
 
+    const openDirectSavePanel = async (button, audioOnly) => {
+      const clipRange = getCurrentClipRange();
+      if (!clipRange.ok) {
+        alert(clipRange.message);
+        return;
+      }
+
+      const effectiveClipRange = resolvePartClipRangeForTimeline(clipRange, timelineItem, index, partItems.length);
+      if (!effectiveClipRange.ok) {
+        alert(effectiveClipRange.message);
+        return;
+      }
+
+      const downloadLabel = audioOnly ? '오디오 다운로드' : '영상 다운로드';
+      const originalMarkup = button.innerHTML;
+      button.disabled = true;
+      button.textContent = '패널 여는 중...';
+
+      try {
+        const selectedQuality = audioOnly
+          ? pickAudioSourceQuality(qualityOptions) || getCurrentQuality()
+          : getCurrentQuality();
+        const downloadTitle = buildClipRangeTitle(
+          audioOnly ? fileTitle : buildQualityTitle(fileTitle, selectedQuality, qualityOptionCount),
+          clipRange
+        );
+        await openBrowserDirectDownloadOverlay({
+          title: downloadTitle,
+          partIndex,
+          partNumber: index + 1,
+          totalParts: partItems.length,
+          playlistUrl: selectedQuality?.file || part.playlistUrl,
+          titleNo: videoInfo?.titleNo || null,
+          bjId: videoInfo?.bjId || null,
+          accessType: videoInfo?.accessType || 'subscription_plus',
+          downloadLabel,
+          audioOnly,
+          selectedQuality,
+          clipStartSeconds: effectiveClipRange.active ? effectiveClipRange.startSeconds : 0,
+          clipEndSeconds: effectiveClipRange.active ? effectiveClipRange.endSeconds : null,
+          clipLabel: clipRange.active ? clipRange.label : ''
+        });
+      } catch (error) {
+        console.error(`${downloadLabel} 패널 열기 실패:`, error);
+        button.disabled = false;
+        button.innerHTML = originalMarkup;
+        alert(`${downloadLabel} 패널을 열지 못했습니다: ${error.message}`);
+      }
+    };
+
     const primaryBtn = createActionButton({
       className: 'direct-button primary-action',
       label: partItems.length > 1 ? `파트 ${index + 1} 직접 저장` : '직접 저장',
       iconMarkup: DOWNLOAD_ICON_MARKUP,
-      onClick: async () => {
-        const clipRange = getCurrentClipRange();
-        if (!clipRange.ok) {
-          alert(clipRange.message);
-          return;
-        }
-
-        const effectiveClipRange = resolvePartClipRangeForTimeline(clipRange, timelineItem, index, partItems.length);
-        if (!effectiveClipRange.ok) {
-          alert(effectiveClipRange.message);
-          return;
-        }
-
-        const originalMarkup = primaryBtn.innerHTML;
-        primaryBtn.disabled = true;
-        primaryBtn.textContent = '패널 여는 중...';
-
-        try {
-          const selectedQuality = getCurrentQuality();
-          const downloadTitle = buildClipRangeTitle(
-            buildQualityTitle(fileTitle, selectedQuality, qualityOptionCount),
-            clipRange
-          );
-          await openBrowserDirectDownloadOverlay({
-            title: downloadTitle,
-            partIndex,
-            partNumber: index + 1,
-            totalParts: partItems.length,
-            playlistUrl: selectedQuality?.file || part.playlistUrl,
-            titleNo: videoInfo?.titleNo || null,
-            bjId: videoInfo?.bjId || null,
-            accessType: videoInfo?.accessType || 'subscription_plus',
-            downloadLabel: '영상 다운로드',
-            selectedQuality,
-            clipStartSeconds: effectiveClipRange.active ? effectiveClipRange.startSeconds : 0,
-            clipEndSeconds: effectiveClipRange.active ? effectiveClipRange.endSeconds : null,
-            clipLabel: clipRange.active ? clipRange.label : ''
-          });
-        } catch (error) {
-          console.error('영상 다운로드 패널 열기 실패:', error);
-          primaryBtn.disabled = false;
-          primaryBtn.innerHTML = originalMarkup;
-          alert(`영상 다운로드 패널을 열지 못했습니다: ${error.message}`);
-        }
-      }
+      onClick: () => openDirectSavePanel(primaryBtn, false)
     });
 
     actions.appendChild(primaryBtn);
+
+    const audioBtn = createActionButton({
+      className: 'secondary-button audio-button',
+      label: '오디오만 저장',
+      iconMarkup: AUDIO_ICON_MARKUP,
+      onClick: () => openDirectSavePanel(audioBtn, true)
+    });
+    audioBtn.title = '영상은 빼고 소리만 m4a 파일로 저장합니다. 구간 저장 설정이 함께 적용됩니다.';
+    actions.appendChild(audioBtn);
 
     const playlistBtn = createActionButton({
       className: 'playlist-button secondary-button compact-action',
@@ -2757,6 +2781,7 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
     bjId: String(downloadConfig?.bjId || ''),
     accessType: String(downloadConfig?.accessType || 'subscription_plus'),
     downloadLabel: String(downloadConfig?.downloadLabel || '영상 다운로드'),
+    audioOnly: Boolean(downloadConfig?.audioOnly),
     mergeParts: Boolean(downloadConfig?.mergeParts),
     clipStartSeconds: Math.max(0, Number(downloadConfig?.clipStartSeconds || 0)),
     clipEndSeconds: Number.isFinite(Number(downloadConfig?.clipEndSeconds)) && Number(downloadConfig?.clipEndSeconds) > 0
@@ -4175,6 +4200,588 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
     };
   };
 
+  const readUint24At = (bytes, offset) => (bytes[offset] << 16) | (bytes[offset + 1] << 8) | bytes[offset + 2];
+  const readUint32At = (bytes, offset) => (
+    ((bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]) >>> 0
+  );
+  const readUint64At = (bytes, offset) => (readUint32At(bytes, offset) * 0x100000000) + readUint32At(bytes, offset + 4);
+  const childBoxes = (bytes, box) => parseBoxesFrom(bytes, box.offset + box.headerSize, box.end);
+  const findChildBox = (bytes, box, type) => childBoxes(bytes, box).find((child) => child.type === type) || null;
+  const asciiBytes = (text) => new TextEncoder().encode(text);
+
+  const uint32Bytes = (values) => {
+    const out = new Uint8Array(values.length * 4);
+    for (let index = 0; index < values.length; index += 1) {
+      writeUint32(out, index * 4, values[index]);
+    }
+    return out;
+  };
+
+  const uint64Bytes = (value) => uint32Bytes([Math.floor(value / 0x100000000), value >>> 0]);
+
+  const encodeFullBox = (type, version, flags, payloadBytes) => encodeBox(type, concatUint8Arrays([
+    new Uint8Array([version, (flags >>> 16) & 0xff, (flags >>> 8) & 0xff, flags & 0xff]),
+    payloadBytes
+  ]));
+
+  const parseAudioInitSegment = (initBuffer) => {
+    const bytes = new Uint8Array(initBuffer);
+    const moov = parseBoxesFrom(bytes, 0, bytes.length).find((box) => box.type === 'moov');
+    if (!moov) {
+      throw new Error('init 세그먼트에서 moov 정보를 찾지 못했습니다.');
+    }
+
+    const moovChildren = childBoxes(bytes, moov);
+    const mvex = moovChildren.find((box) => box.type === 'mvex');
+    for (const trak of moovChildren.filter((box) => box.type === 'trak')) {
+      const mdia = findChildBox(bytes, trak, 'mdia');
+      const hdlr = mdia && findChildBox(bytes, mdia, 'hdlr');
+      if (!hdlr || readAscii(bytes, hdlr.offset + hdlr.headerSize + 8, 4) !== 'soun') {
+        continue;
+      }
+
+      const tkhd = findChildBox(bytes, trak, 'tkhd');
+      const mdhd = findChildBox(bytes, mdia, 'mdhd');
+      const minf = findChildBox(bytes, mdia, 'minf');
+      const stbl = minf && findChildBox(bytes, minf, 'stbl');
+      const stsd = stbl && findChildBox(bytes, stbl, 'stsd');
+      if (!tkhd || !mdhd || !stsd) {
+        continue;
+      }
+
+      const tkhdStart = tkhd.offset + tkhd.headerSize;
+      const trackId = readUint32At(bytes, tkhdStart + (bytes[tkhdStart] === 1 ? 20 : 12));
+      const mdhdStart = mdhd.offset + mdhd.headerSize;
+      const mdhdIsV1 = bytes[mdhdStart] === 1;
+      const timescale = readUint32At(bytes, mdhdStart + (mdhdIsV1 ? 20 : 12));
+      const languageOffset = mdhdStart + (mdhdIsV1 ? 32 : 20);
+      const trex = mvex && childBoxes(bytes, mvex).find((box) => (
+        box.type === 'trex' && readUint32At(bytes, box.offset + box.headerSize + 4) === trackId
+      ));
+      const trexStart = trex ? trex.offset + trex.headerSize : 0;
+
+      return {
+        trackId,
+        timescale: timescale || 48000,
+        language: ((bytes[languageOffset] << 8) | bytes[languageOffset + 1]) || 0x55c4,
+        stsdBytes: sliceBoxBytes(bytes, stsd),
+        defaultSampleDuration: trex ? readUint32At(bytes, trexStart + 12) : 0,
+        defaultSampleSize: trex ? readUint32At(bytes, trexStart + 16) : 0
+      };
+    }
+
+    throw new Error('영상 파일에서 오디오 트랙을 찾지 못했습니다.');
+  };
+
+  // Pulls the audio samples out of a muxed fMP4 fragment by walking tfhd/trun offsets.
+  const extractFmp4AudioSamples = (buffer, audioInfo) => {
+    const bytes = new Uint8Array(buffer);
+    const payloads = [];
+    const sampleSizes = [];
+    const sampleDurations = [];
+
+    parseBoxesFrom(bytes, 0, bytes.length).forEach((moof) => {
+      if (moof.type !== 'moof') {
+        return;
+      }
+
+      let previousTrafEnd = moof.offset;
+      childBoxes(bytes, moof).forEach((traf) => {
+        if (traf.type !== 'traf') {
+          return;
+        }
+
+        const trafChildren = childBoxes(bytes, traf);
+        const tfhd = trafChildren.find((box) => box.type === 'tfhd');
+        if (!tfhd) {
+          return;
+        }
+
+        const tfhdStart = tfhd.offset + tfhd.headerSize;
+        const tfhdFlags = readUint24At(bytes, tfhdStart + 1);
+        const isAudio = readUint32At(bytes, tfhdStart + 4) === audioInfo.trackId;
+        let cursor = tfhdStart + 8;
+        let baseOffset = (tfhdFlags & 0x20000) ? moof.offset : previousTrafEnd;
+        if (tfhdFlags & 0x1) {
+          baseOffset = readUint64At(bytes, cursor);
+          cursor += 8;
+        }
+        if (tfhdFlags & 0x2) {
+          cursor += 4;
+        }
+        let defaultDuration = audioInfo.defaultSampleDuration;
+        let defaultSize = audioInfo.defaultSampleSize;
+        if (tfhdFlags & 0x8) {
+          defaultDuration = readUint32At(bytes, cursor);
+          cursor += 4;
+        }
+        if (tfhdFlags & 0x10) {
+          defaultSize = readUint32At(bytes, cursor);
+        }
+
+        let dataCursor = baseOffset;
+        trafChildren.forEach((trun) => {
+          if (trun.type !== 'trun') {
+            return;
+          }
+
+          const trunStart = trun.offset + trun.headerSize;
+          const trunFlags = readUint24At(bytes, trunStart + 1);
+          const sampleCount = readUint32At(bytes, trunStart + 4);
+          let entry = trunStart + 8;
+          if (trunFlags & 0x1) {
+            dataCursor = baseOffset + (readUint32At(bytes, entry) | 0);
+            entry += 4;
+          }
+          if (trunFlags & 0x4) {
+            entry += 4;
+          }
+
+          const runStart = dataCursor;
+          for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+            let duration = defaultDuration;
+            let size = defaultSize;
+            if (trunFlags & 0x100) {
+              duration = readUint32At(bytes, entry);
+              entry += 4;
+            }
+            if (trunFlags & 0x200) {
+              size = readUint32At(bytes, entry);
+              entry += 4;
+            }
+            if (trunFlags & 0x400) {
+              entry += 4;
+            }
+            if (trunFlags & 0x800) {
+              entry += 4;
+            }
+            if (isAudio) {
+              sampleSizes.push(size);
+              sampleDurations.push(duration || 1024);
+            }
+            dataCursor += size;
+          }
+
+          if (isAudio && sampleCount > 0) {
+            if (runStart < 0 || dataCursor > bytes.length) {
+              throw new Error('오디오 샘플 위치가 세그먼트 범위를 벗어났습니다.');
+            }
+            payloads.push(bytes.subarray(runStart, dataCursor));
+          }
+        });
+        previousTrafEnd = dataCursor;
+      });
+    });
+
+    return { payloads, sampleSizes, sampleDurations };
+  };
+
+  // Builds ftyp + moov + mdat header for a regular (non-fragmented) M4A whose mdat is the chunk payloads in order.
+  const buildM4aHeader = (audioInfo, chunks) => {
+    const sampleSizes = [];
+    const sttsValues = [];
+    const stscValues = [];
+    let sttsRuns = 0;
+    let lastDuration = -1;
+    let lastRunCountIndex = -1;
+    let lastSamplesPerChunk = -1;
+    let totalDuration = 0;
+    let totalPayloadBytes = 0;
+
+    chunks.forEach((chunk, chunkIndex) => {
+      chunk.sampleSizes.forEach((size) => sampleSizes.push(size));
+      chunk.sampleDurations.forEach((duration) => {
+        totalDuration += duration;
+        if (duration === lastDuration) {
+          sttsValues[lastRunCountIndex] += 1;
+          return;
+        }
+        lastRunCountIndex = sttsValues.length;
+        sttsValues.push(1, duration);
+        lastDuration = duration;
+        sttsRuns += 1;
+      });
+      if (chunk.sampleSizes.length !== lastSamplesPerChunk) {
+        stscValues.push(chunkIndex + 1, chunk.sampleSizes.length, 1);
+        lastSamplesPerChunk = chunk.sampleSizes.length;
+      }
+      totalPayloadBytes += chunk.byteLength;
+    });
+
+    const useV1 = totalDuration > 0xffffffff;
+    const version = useV1 ? 1 : 0;
+    const durationField = useV1 ? uint64Bytes(totalDuration) : uint32Bytes([totalDuration]);
+    const timesField = new Uint8Array(useV1 ? 16 : 8);
+    const matrix = uint32Bytes([0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000]);
+    const useLargeOffsets = totalPayloadBytes > 0xf0000000;
+
+    const ftyp = encodeBox('ftyp', concatUint8Arrays([
+      asciiBytes('M4A '),
+      uint32Bytes([0x200]),
+      asciiBytes('M4A mp42isom')
+    ]));
+    const mvhd = encodeFullBox('mvhd', version, 0, concatUint8Arrays([
+      timesField,
+      uint32Bytes([audioInfo.timescale]),
+      durationField,
+      uint32Bytes([0x00010000]),
+      new Uint8Array([0x01, 0x00]),
+      new Uint8Array(10),
+      matrix,
+      new Uint8Array(24),
+      uint32Bytes([audioInfo.trackId + 1])
+    ]));
+    const tkhd = encodeFullBox('tkhd', version, 0x3, concatUint8Arrays([
+      timesField,
+      uint32Bytes([audioInfo.trackId, 0]),
+      durationField,
+      new Uint8Array(8),
+      new Uint8Array([0, 0, 0, 0, 0x01, 0x00, 0, 0]),
+      matrix,
+      new Uint8Array(8)
+    ]));
+    const mdhd = encodeFullBox('mdhd', version, 0, concatUint8Arrays([
+      timesField,
+      uint32Bytes([audioInfo.timescale]),
+      durationField,
+      new Uint8Array([(audioInfo.language >> 8) & 0xff, audioInfo.language & 0xff, 0, 0])
+    ]));
+    const hdlr = encodeFullBox('hdlr', 0, 0, concatUint8Arrays([
+      new Uint8Array(4),
+      asciiBytes('soun'),
+      new Uint8Array(12),
+      asciiBytes('SoundHandler\0')
+    ]));
+    const smhd = encodeFullBox('smhd', 0, 0, new Uint8Array(4));
+    const dinf = encodeBox('dinf', encodeFullBox('dref', 0, 0, concatUint8Arrays([
+      uint32Bytes([1]),
+      encodeFullBox('url ', 0, 1, new Uint8Array(0))
+    ])));
+    const stts = encodeFullBox('stts', 0, 0, uint32Bytes([sttsRuns, ...sttsValues]));
+    const stsc = encodeFullBox('stsc', 0, 0, uint32Bytes([stscValues.length / 3, ...stscValues]));
+    const stszValues = new Array(sampleSizes.length + 2);
+    stszValues[0] = 0;
+    stszValues[1] = sampleSizes.length;
+    for (let index = 0; index < sampleSizes.length; index += 1) {
+      stszValues[index + 2] = sampleSizes[index];
+    }
+    const stsz = encodeFullBox('stsz', 0, 0, uint32Bytes(stszValues));
+
+    const buildMoov = (chunkOffsets) => {
+      const offsetTable = useLargeOffsets
+        ? encodeFullBox('co64', 0, 0, concatUint8Arrays([
+          uint32Bytes([chunkOffsets.length]),
+          ...chunkOffsets.map((offset) => uint64Bytes(offset))
+        ]))
+        : encodeFullBox('stco', 0, 0, uint32Bytes([chunkOffsets.length, ...chunkOffsets]));
+      const stbl = encodeBox('stbl', concatUint8Arrays([audioInfo.stsdBytes, stts, stsc, stsz, offsetTable]));
+      const minf = encodeBox('minf', concatUint8Arrays([smhd, dinf, stbl]));
+      const mdia = encodeBox('mdia', concatUint8Arrays([mdhd, hdlr, minf]));
+      const trak = encodeBox('trak', concatUint8Arrays([tkhd, mdia]));
+      return encodeBox('moov', concatUint8Arrays([mvhd, trak]));
+    };
+
+    const mdatHeaderSize = useLargeOffsets ? 16 : 8;
+    const moovSize = buildMoov(chunks.map(() => 0)).length;
+    let dataOffset = ftyp.length + moovSize + mdatHeaderSize;
+    const chunkOffsets = chunks.map((chunk) => {
+      const offset = dataOffset;
+      dataOffset += chunk.byteLength;
+      return offset;
+    });
+    const mdatHeader = useLargeOffsets
+      ? concatUint8Arrays([uint32Bytes([1]), asciiBytes('mdat'), uint64Bytes(totalPayloadBytes + 16)])
+      : concatUint8Arrays([uint32Bytes([totalPayloadBytes + 8]), asciiBytes('mdat')]);
+
+    return {
+      headerBytes: concatUint8Arrays([ftyp, buildMoov(chunkOffsets), mdatHeader]),
+      durationSeconds: totalDuration / audioInfo.timescale
+    };
+  };
+
+  // Legacy MPEG-TS streams: keep only the ADTS AAC elementary stream.
+  const extractAdtsFromTs = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    const frames = [];
+    let pmtPid = -1;
+    let audioPid = -1;
+    let pesChunks = null;
+
+    const flushPes = () => {
+      if (!pesChunks?.length) {
+        pesChunks = null;
+        return;
+      }
+      const pes = concatUint8Arrays(pesChunks);
+      pesChunks = null;
+      if (pes.length < 9 || pes[0] !== 0 || pes[1] !== 0 || pes[2] !== 1) {
+        return;
+      }
+      const payloadStart = 9 + pes[8];
+      if (payloadStart < pes.length) {
+        frames.push(pes.subarray(payloadStart));
+      }
+    };
+
+    const getSectionEnd = (sectionStart, packetEnd) => Math.min(
+      packetEnd,
+      sectionStart + 3 + (((bytes[sectionStart + 1] & 0x0f) << 8) | bytes[sectionStart + 2]) - 4
+    );
+
+    let offset = 0;
+    while (offset + 188 <= bytes.length) {
+      if (bytes[offset] !== 0x47) {
+        offset += 1;
+        continue;
+      }
+
+      const packetEnd = offset + 188;
+      const payloadUnitStart = (bytes[offset + 1] & 0x40) !== 0;
+      const pid = ((bytes[offset + 1] & 0x1f) << 8) | bytes[offset + 2];
+      const adaptationControl = (bytes[offset + 3] >> 4) & 0x3;
+      const payload = offset + 4 + (adaptationControl === 3 ? 1 + bytes[offset + 4] : 0);
+
+      if ((adaptationControl & 0x1) && payload < packetEnd) {
+        if (pid === 0 && payloadUnitStart) {
+          const sectionStart = payload + 1 + bytes[payload];
+          const sectionEnd = getSectionEnd(sectionStart, packetEnd);
+          for (let entry = sectionStart + 8; entry + 4 <= sectionEnd; entry += 4) {
+            if (((bytes[entry] << 8) | bytes[entry + 1]) !== 0) {
+              pmtPid = ((bytes[entry + 2] & 0x1f) << 8) | bytes[entry + 3];
+              break;
+            }
+          }
+        } else if (pid === pmtPid && payloadUnitStart && audioPid < 0) {
+          const sectionStart = payload + 1 + bytes[payload];
+          const sectionEnd = getSectionEnd(sectionStart, packetEnd);
+          let entry = sectionStart + 12 + (((bytes[sectionStart + 10] & 0x0f) << 8) | bytes[sectionStart + 11]);
+          while (entry + 5 <= sectionEnd) {
+            if (bytes[entry] === 0x0f) {
+              audioPid = ((bytes[entry + 1] & 0x1f) << 8) | bytes[entry + 2];
+              break;
+            }
+            entry += 5 + (((bytes[entry + 3] & 0x0f) << 8) | bytes[entry + 4]);
+          }
+        } else if (pid === audioPid) {
+          if (payloadUnitStart) {
+            flushPes();
+            pesChunks = [];
+          }
+          if (pesChunks) {
+            pesChunks.push(bytes.subarray(payload, packetEnd));
+          }
+        }
+      }
+      offset = packetEnd;
+    }
+    flushPes();
+
+    if (audioPid < 0) {
+      throw new Error('TS 세그먼트에서 AAC 오디오 트랙을 찾지 못했습니다. ffmpeg CMD를 이용해주세요.');
+    }
+    return frames;
+  };
+
+  const stripId3Tags = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    let offset = 0;
+    while (offset + 10 <= bytes.length && readAscii(bytes, offset, 3) === 'ID3') {
+      const tagSize = ((bytes[offset + 6] & 0x7f) << 21) | ((bytes[offset + 7] & 0x7f) << 14)
+        | ((bytes[offset + 8] & 0x7f) << 7) | (bytes[offset + 9] & 0x7f);
+      offset += 10 + tagSize + ((bytes[offset + 5] & 0x10) ? 10 : 0);
+    }
+    return bytes.subarray(Math.min(offset, bytes.length));
+  };
+
+  const pickAudioOnlyVariant = (variants) => {
+    const audioOnlyVariant = variants.find((variant) => (
+      /mp4a|ac-3|ec-3|opus/i.test(variant.codecs) && !/avc|hvc|hev|vp0|av01/i.test(variant.codecs)
+    ));
+    if (audioOnlyVariant) {
+      return audioOnlyVariant;
+    }
+    const bitrateOf = (variant) => parseVariantBitrate(variant) || Number.MAX_SAFE_INTEGER;
+    return [...variants].sort((left, right) => bitrateOf(left) - bitrateOf(right))[0] || null;
+  };
+
+  const requestAudioSaveHandle = (profile) => requestDirectSaveHandle({
+    suggestedName: `${sanitizeFileName(job.title)}.${profile.extension}`,
+    types: [
+      {
+        description: profile.description,
+        accept: {
+          [profile.mimeType]: [`.${profile.extension}`]
+        }
+      }
+    ]
+  });
+
+  const saveAudioOnlyDownload = async ({ resolvedMaster, resolvedMedia, baseAuthContext, signal }) => {
+    let manifestUrl = resolvedMaster?.audioEntry?.uri
+      || (resolvedMaster ? pickAudioOnlyVariant(resolvedMaster.parsedManifest.variants)?.url : '')
+      || resolvedMedia?.manifestUrl
+      || '';
+    if (!manifestUrl) {
+      throw new Error('오디오를 받을 재생 목록을 찾지 못했습니다.');
+    }
+
+    updateUi({
+      status: '오디오 트랙을 준비하는 중...',
+      detail: '영상은 받지 않고 소리만 추출합니다.',
+      percent: 4,
+      running: true
+    });
+
+    const authContext = { ...baseAuthContext, manifestUrl };
+    let parsedManifest = parseM3u8(await (await fetchManifestWithOptionalAuth(authContext, signal)).text(), manifestUrl);
+    if (parsedManifest.variants.length > 0) {
+      manifestUrl = pickAudioOnlyVariant(parsedManifest.variants)?.url || '';
+      authContext.manifestUrl = manifestUrl;
+      parsedManifest = parseM3u8(await (await fetchManifestWithOptionalAuth(authContext, signal)).text(), manifestUrl);
+    }
+
+    if (parsedManifest.segments.length === 0) {
+      throw new Error('오디오 세그먼트 목록을 찾지 못했습니다.');
+    }
+
+    const sourceDuration = parsedManifest.segments.reduce((sum, segment) => sum + (Number(segment.duration || 0)), 0);
+    const clipRange = resolveClipRangeForDuration(sourceDuration);
+    const segments = filterSegmentsByClipRange(parsedManifest.segments, clipRange);
+    if (segments.length === 0) {
+      throw new Error('선택한 시간 구간에 포함되는 세그먼트가 없습니다.');
+    }
+
+    let format = 'ts';
+    if (parsedManifest.initSegmentUrl) {
+      format = 'fmp4';
+    } else if (segments.every((segment) => /\.aac(?:[?#]|$)/i.test(segment.url))) {
+      format = 'aac';
+    } else if (parsedManifest.usesFragmentedMp4) {
+      throw new Error('fMP4 init 세그먼트가 없어 오디오를 추출할 수 없습니다. ffmpeg CMD를 이용해주세요.');
+    }
+
+    const profile = format === 'fmp4'
+      ? { extension: 'm4a', description: 'M4A Audio', mimeType: 'audio/mp4', detailLabel: 'M4A (AAC)' }
+      : { extension: 'aac', description: 'AAC Audio', mimeType: 'audio/aac', detailLabel: 'AAC (ADTS)' };
+    const fileHandle = await requestAudioSaveHandle(profile);
+
+    let audioInfo = null;
+    if (format === 'fmp4') {
+      const initResponse = await fetchWithReauth(parsedManifest.initSegmentUrl, authContext, signal);
+      audioInfo = parseAudioInitSegment(await initResponse.arrayBuffer());
+    }
+
+    const total = segments.length;
+    const totalDuration = segments.reduce((sum, segment) => sum + (Number(segment.duration || 0)), 0);
+    const results = new Array(total);
+    let nextIndex = 0;
+    let completed = 0;
+    let receivedBytes = 0;
+    const concurrency = Math.min(
+      6,
+      Math.max(2, Math.min(total, Math.floor(Number(window.navigator?.hardwareConcurrency || 8) / 2)))
+    );
+
+    const worker = async () => {
+      while (!window[stateKey]?.cancelRequested) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        if (currentIndex >= total) {
+          return;
+        }
+
+        const response = await fetchWithReauth(segments[currentIndex].url, authContext, signal);
+        const buffer = await response.arrayBuffer();
+        if (format === 'fmp4') {
+          const extracted = extractFmp4AudioSamples(buffer, audioInfo);
+          results[currentIndex] = {
+            blob: new Blob(extracted.payloads),
+            sampleSizes: extracted.sampleSizes,
+            sampleDurations: extracted.sampleDurations
+          };
+        } else {
+          results[currentIndex] = {
+            blob: new Blob(format === 'aac' ? [stripId3Tags(buffer)] : extractAdtsFromTs(buffer))
+          };
+        }
+
+        receivedBytes += results[currentIndex].blob.size;
+        completed += 1;
+        updateUi({
+          status: `오디오 추출 중... (${completed}/${total})`,
+          detail: `${formatDuration((totalDuration * completed) / total)} / ${formatDuration(totalDuration)} · 오디오 ${formatBytes(receivedBytes)}`,
+          percent: 6 + ((completed / total) * 88),
+          running: true
+        });
+      }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    const wasCancelled = Boolean(window[stateKey]?.cancelRequested);
+    let usableCount = 0;
+    while (usableCount < total && results[usableCount]) {
+      usableCount += 1;
+    }
+    if (usableCount === 0 || (!wasCancelled && usableCount < total)) {
+      throw new Error(wasCancelled ? '사용자가 다운로드를 취소했습니다.' : '오디오 세그먼트 일부 다운로드에 실패했습니다.');
+    }
+
+    updateUi({
+      status: '오디오 파일을 정리하는 중...',
+      detail: `${profile.detailLabel} · 세그먼트 ${usableCount}개`,
+      percent: 96,
+      running: true
+    });
+
+    const usableResults = results.slice(0, usableCount);
+    let savedDuration = segments.slice(0, usableCount).reduce((sum, segment) => sum + (Number(segment.duration || 0)), 0);
+    const outputParts = usableResults.map((entry) => entry.blob);
+    if (format === 'fmp4') {
+      const chunks = usableResults
+        .filter((entry) => entry.sampleSizes.length > 0)
+        .map((entry) => ({
+          sampleSizes: entry.sampleSizes,
+          sampleDurations: entry.sampleDurations,
+          byteLength: entry.blob.size
+        }));
+      if (chunks.length === 0) {
+        throw new Error('이 영상에서 오디오 샘플을 찾지 못했습니다.');
+      }
+      const m4aHeader = buildM4aHeader(audioInfo, chunks);
+      outputParts.unshift(m4aHeader.headerBytes);
+      savedDuration = m4aHeader.durationSeconds;
+    }
+
+    const outputBlob = new Blob(outputParts, { type: profile.mimeType });
+    const writable = await fileHandle.createWritable();
+    try {
+      await writable.write(outputBlob);
+      await writable.close();
+    } catch (writeError) {
+      try {
+        await writable.abort();
+      } catch (abortError) {
+        // Surface the original write error.
+      }
+      throw writeError;
+    }
+
+    window[stateKey] = {
+      busy: false,
+      cancelRequested: false,
+      overlay
+    };
+    updateUi({
+      status: wasCancelled
+        ? '취소 요청에 따라 현재까지 받은 오디오만 저장했습니다.'
+        : `${job.downloadLabel}가 완료되었습니다.`,
+      detail: `${profile.detailLabel} · ${formatDuration(savedDuration)} · ${formatBytes(outputBlob.size)} 저장 완료`,
+      percent: wasCancelled ? lastProgressPercent : 100,
+      finished: true
+    });
+  };
+
   const cleanupOverlay = () => {
     if (window[stateKey]?.busy) {
       return;
@@ -4243,6 +4850,7 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
 
       // Prefer master playlist first so lower qualities (720p etc.) can keep linked audio tracks.
       const candidateManifestUrls = [
+        ...(job.audioOnly ? [selectedQuality?.file] : []),
         fileInfo?.file,
         job.playlistUrl,
         ...(Array.isArray(job.playlistUrls) ? job.playlistUrls : []),
@@ -4275,6 +4883,11 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
         selectedQuality?.resolution || '',
         selectedQuality?.bitrate || ''
       ].filter(Boolean).join(' / ');
+
+      if (job.audioOnly) {
+        await saveAudioOnlyDownload({ resolvedMaster, resolvedMedia, baseAuthContext, signal });
+        return;
+      }
 
       // Path A: master playlist with externally linked audio (common for 720p and below).
       if (resolvedMaster?.chosenVariant && resolvedMaster.audioEntry?.uri) {
@@ -4708,10 +5321,12 @@ function injectBrowserDirectDownloadPanel(downloadConfig) {
   };
 
   updateUi({
-    status: '직접 저장 준비 완료',
-    detail: job.clipLabel
-      ? `${job.clipLabel} 구간만 SOOP 페이지 안에서 바로 받습니다.`
-      : job.title,
+    status: job.audioOnly ? '오디오 저장 준비 완료' : '직접 저장 준비 완료',
+    detail: job.audioOnly
+      ? `영상은 빼고 소리만 m4a 파일로 저장합니다.${job.clipLabel ? ` (${job.clipLabel})` : ''}`
+      : job.clipLabel
+        ? `${job.clipLabel} 구간만 SOOP 페이지 안에서 바로 받습니다.`
+        : job.title,
     percent: 0
   });
 

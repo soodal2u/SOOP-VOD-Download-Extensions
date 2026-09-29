@@ -1,13 +1,13 @@
 # SOOP VOD Downloader
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-SOOP%20VOD%20Downloader-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/soop-vod-downloader/gjodmjkcebohglhppopcejdgpaplpdac)
-![Version](https://img.shields.io/badge/version-3.14.8-31c48d)
+![Version](https://img.shields.io/badge/version-3.17.0-31c48d)
 ![Manifest](https://img.shields.io/badge/manifest-v3-111827)
 
 SOOP VOD Downloader는 숲(SOOP, 전 아프리카TV)에서 제공하는 VOD를 더 편하게 다운로드하고, 다운로드한 영상을 병합할 수 있도록 만든 Chrome 확장 프로그램입니다.
 
 - Chrome Web Store: [SOOP VOD Downloader Extension](https://chromewebstore.google.com/detail/soop-vod-downloader/gjodmjkcebohglhppopcejdgpaplpdac)
-- 현재 버전: `3.14.8`
+- 현재 버전: `3.17.0`
 - Manifest: Chrome Extension Manifest V3
 - 개발자 이메일: `soodalpie@gmail.com`
 
@@ -25,6 +25,7 @@ SOOP VOD Downloader는 숲(SOOP, 전 아프리카TV)에서 제공하는 VOD를 �
 10. 구독플러스 다시보기: 구독플러스 다시보기 다운로드 흐름을 지원합니다.
 11. 서버 재시작: 병합 서버 오류가 발생했을 때 사용자가 직접 재시작을 요청할 수 있습니다.
 12. 병합 페이지: 여러 개의 `m3u8` 파일을 병합 페이지에서 동시에 처리할 수 있습니다.
+13. 오디오만 저장: 영상 없이 소리만 `.m4a` 파일로 저장합니다. 구간 저장과 함께 사용할 수 있습니다.
 
 ## 사용 방법
 
@@ -62,6 +63,12 @@ SOOP VOD Downloader는 숲(SOOP, 전 아프리카TV)에서 제공하는 VOD를 �
 본 확장 프로그램은 SOOP 플랫폼의 권리와 운영 정책을 존중합니다. SOOP 측으로부터 본 확장 프로그램의 삭제 요청이 접수될 경우, 개발자는 해당 요청을 확인하는 즉시 관련 절차에 따라 프로그램 삭제 및 배포 중단 조치를 이행할 것을 약속드립니다.
 
 ## 변경 로그
+
+### 2026-09-29 업데이트 내역
+
+- 오디오만 저장 기능 추가 (`.m4a`, 라디오처럼 듣는 방송용)
+- 가장 가벼운 화질에서 소리만 추출해 영상 다운로드보다 훨씬 빠르게 저장
+- 구간 저장, 취소 시 부분 저장 지원
 
 ### 2026-05-31 업데이트 내역
 
