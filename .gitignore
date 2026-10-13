@@ -9,3 +9,10 @@
 /3.3.2 SOOP VOD DOWNLOAD.zip
 /3.3.2 SOOP VOD DOWNLOAD권한 삭제.zip
 /비교
+
+# TLS 인증서/개인키는 절대 커밋하지 않음
+*.pem
+*.key
+*.pfx
+*.p12
+certs/
